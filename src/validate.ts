@@ -84,17 +84,48 @@ function normalizePhrase(input: CertaintyPhraseInput): CertaintyPhraseRule {
   return typeof input === 'string' ? { phrase: input } : input;
 }
 
-function findOccurrences(haystack: string, needle: string, caseSensitive: boolean): number[] {
+// Characters that are invisible to a reader but break a plain substring
+// search: soft hyphen, zero-width space/joiners, bidi marks, word joiner,
+// and the byte-order mark.
+const INVISIBLE_CHARS = /[\u00ad\u200b-\u200f\u2060\ufeff]/g;
+// Typographic apostrophes, folded to ' so contractions are recognized.
+const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
+// A hyphen (ASCII or U+2010..U+2012) between two letters/digits reads as a
+// space for matching: "fact-checked" and "fact checked" are the same phrase.
+const INTRAWORD_HYPHEN = /(?<=[\p{L}\p{N}])[-\u2010-\u2012](?=[\p{L}\p{N}])/gu;
+const WHITESPACE_RUN = /\s+/g;
+
+/**
+ * Fold text into the form used for matching: Unicode compatibility
+ * normalization (NFKC: ligatures, full-width letters, non-breaking spaces),
+ * invisible characters removed, intra-word hyphens read as spaces, runs of
+ * whitespace collapsed, and (unless case-sensitive) lower-cased.
+ *
+ * Phrases and claim text are folded the same way, and every position used
+ * afterwards (match index, negation window) is a position in the FOLDED
+ * string. Mixing positions from the folded string with the original text
+ * is a bug: lower-casing "\u0130" changes the string length.
+ */
+function foldText(text: string, caseSensitive: boolean): string {
+  const folded = text
+    .normalize('NFKC')
+    .replace(INVISIBLE_CHARS, '')
+    .replace(CURLY_APOSTROPHES, "'")
+    .replace(INTRAWORD_HYPHEN, ' ')
+    .replace(WHITESPACE_RUN, ' ');
+  return caseSensitive ? folded : folded.toLowerCase();
+}
+
+/** Start index of every non-overlapping occurrence of `needle` in `haystack`. */
+function findOccurrences(haystack: string, needle: string): number[] {
   if (!needle) return [];
-  const h = caseSensitive ? haystack : haystack.toLowerCase();
-  const n = caseSensitive ? needle : needle.toLowerCase();
   const indices: number[] = [];
   let start = 0;
   for (;;) {
-    const idx = h.indexOf(n, start);
+    const idx = haystack.indexOf(needle, start);
     if (idx === -1) break;
     indices.push(idx);
-    start = idx + n.length;
+    start = idx + needle.length;
   }
   return indices;
 }
@@ -103,7 +134,8 @@ function findOccurrences(haystack: string, needle: string, caseSensitive: boolea
  * True if the text immediately preceding a phrase match contains a
  * negation word ("not", "isn't", "without", ...), e.g. "not a
  * proprietary dataset" should not be flagged even though "proprietary
- * dataset" is a certainty phrase.
+ * dataset" is a certainty phrase. `text` must be the folded string the
+ * match index was computed on.
  */
 function isNegated(text: string, matchIndex: number, windowSize: number): boolean {
   const start = Math.max(0, matchIndex - windowSize);
@@ -140,11 +172,12 @@ export function validateClaims(
 
   for (const claim of claims) {
     const tierIsValid = claim.tier != null && VALID_TIERS.includes(claim.tier);
+    const foldedText = foldText(claim.text, caseSensitive);
 
     for (const { phrase, reason } of normalizedPhrases) {
-      const occurrences = findOccurrences(claim.text, phrase, caseSensitive);
+      const occurrences = findOccurrences(foldedText, foldText(phrase, caseSensitive));
       for (const idx of occurrences) {
-        if (isNegated(claim.text, idx, negationWindow)) continue;
+        if (isNegated(foldedText, idx, negationWindow)) continue;
 
         const backed = tierIsValid && certaintyRequiresTier.includes(claim.tier);
         if (backed) continue;
