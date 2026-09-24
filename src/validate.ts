@@ -131,14 +131,14 @@ export function validateClaims(
   const offenses: ClaimOffense[] = [];
 
   for (const claim of claims) {
-    const tierIsValid = claim.tier != null && VALID_TIERS.includes(claim.tier as ProvenanceTier);
+    const tierIsValid = claim.tier != null && VALID_TIERS.includes(claim.tier);
 
     for (const { phrase, reason } of normalizedPhrases) {
       const occurrences = findOccurrences(claim.text, phrase, caseSensitive);
       for (const idx of occurrences) {
         if (isNegated(claim.text, idx, negationWindow)) continue;
 
-        const backed = tierIsValid && certaintyRequiresTier.includes(claim.tier as ProvenanceTier);
+        const backed = tierIsValid && certaintyRequiresTier.includes(claim.tier);
         if (backed) continue;
 
         offenses.push({
