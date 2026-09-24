@@ -35,8 +35,16 @@ export interface ClaimOffense {
   reason: ClaimOffenseReason;
   /** Human-readable explanation, suitable for a CI failure message. */
   message: string;
-  /** The claim's tier as given (may be invalid/undefined for unknown_tier offenses). */
-  tier: ProvenanceTier | string | null | undefined;
+  /**
+   * The claim's tier as given. A recognized tier autocompletes as a
+   * `ProvenanceTier`; an unrecognized string (e.g. `"Verified"`) is echoed
+   * as-is, and a missing or non-string tier is `null`.
+   *
+   * `(string & {})` keeps the three tier literals visible to editors while
+   * still admitting arbitrary strings; a bare `| string` would collapse the
+   * union to `string`.
+   */
+  tier: ProvenanceTier | (string & {}) | null;
 }
 
 export interface ValidateClaimsOptions {
@@ -151,7 +159,7 @@ export function validateClaims(
             `Claim uses certainty language ("${phrase}") but is tiered ` +
               `${tierIsValid ? `"${claim.tier}"` : '(missing/invalid tier)'}, not one of: ` +
               `${certaintyRequiresTier.join(', ')}.`,
-          tier: claim.tier,
+          tier: typeof claim.tier === 'string' ? claim.tier : null,
         });
       }
     }
@@ -166,7 +174,7 @@ export function validateClaims(
           `Claim "${claim.id}" has no valid provenance tier ` +
           `(got ${JSON.stringify(claim.tier)}). Every claim must be ` +
           `'verified', 'modeled', or 'editorial'.`,
-        tier: claim.tier ?? null,
+        tier: typeof claim.tier === 'string' ? claim.tier : null,
       });
       continue;
     }

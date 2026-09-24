@@ -17,7 +17,7 @@ import {
   validateClaims,
   type Claim,
   type ProvenanceTierDefinitions,
-} from '../src/index';
+} from '../src/index.js';
 
 describe('validateClaims', () => {
   it('passes a claim correctly labeled verified with a sourceRef', () => {
@@ -87,7 +87,7 @@ describe('validateClaims', () => {
 
     const offenses = validateClaims(claims);
     expect(offenses).toHaveLength(1);
-    expect(offenses[0].reason).toBe('missing_source_ref');
+    expect(offenses[0]?.reason).toBe('missing_source_ref');
   });
 
   it('accepts raw text plus a caller-supplied claim extractor', () => {
