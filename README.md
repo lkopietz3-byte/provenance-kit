@@ -6,44 +6,28 @@ that quietly drifts as a site grows.
 
 Zero runtime dependencies. Framework-agnostic. TypeScript, strict mode.
 
-## The incident this pattern fixes
+## A synthetic failure pattern this library addresses
 
-This library generalizes a pattern built for a real content site after a
-real audit found the problem it fixes.
+The following hypothetical is synthetic; it does not describe a particular
+product, audit, or dataset. On a growing content site, routine editorial and
+AI-assisted work could lead to:
 
-The site had accumulated, over months of normal editorial and AI-assisted
-content work:
+- Numbers receiving `(verified)` labels before anyone checks them against a
+  primary source.
+- Precise-sounding sample sizes appearing without supporting records.
+- Phrases such as "reverse-engineered" or "proprietary dataset" describing
+  estimates modeled from public signals.
 
-- **~150 false `(verified)` labels** attached to numbers nobody had
-  actually checked against a primary source.
-- **Fabricated precise-sounding sample sizes** ("800+ Member-submitted
-  reports", "1,800 confirmed bids") for data that didn't exist at that
-  scale, or at all.
-- **Vague high-confidence language** — "reverse-engineered", "proprietary
-  dataset" — describing numbers that were, in fact, estimates modeled
-  from public signal.
+These errors can emerge without intent to mislead. When confidence lives only
+in prose, a build has no field to check against and cannot flag a mismatch.
 
-None of this was one person deliberately lying. It was the ordinary
-failure mode of a site that grows by copywriting convention: every
-individual sentence sounded fine in isolation, "verified" is a word
-people reach for casually, and nothing in the codebase made a false
-confidence claim any harder to ship than a true one. The confidence level
-of a claim lived nowhere except in the prose itself — there was no field
-to check it against, so nothing could ever be wrong in a way a build
-could catch.
-
-The fix was to stop treating provenance as a copywriting convention and
-make it a **first-class, enforced data field**: every claim carries one
-of exactly three tiers, a public methodology page explains what each
-tier means, and a scanner checks every claim against a list of
-certainty-implying phrases and fails loudly when the language and the
-tier don't match. That scanner is what `validateClaims` in this package
-generalizes — the specific site, its banned-phrase list, and its page
-inventory were all domain-specific and are deliberately **not** included
-here. What's included is the mechanism: a typed claim shape, a
-phrase-vs-tier scanner with negation handling, and the two rendering
-helpers (badge text, methodology-page scaffold) every product using this
-pattern ends up needing.
+The pattern is to make provenance a **first-class, enforced data field**:
+every claim carries one of exactly three tiers, a methodology page explains
+what each tier means, and a scanner checks claims against certainty-implying
+phrases and flags mismatches. This package generalizes that mechanism:
+a typed claim shape, a phrase-vs-tier scanner with negation handling, and
+badge-text and methodology-page helpers. Phrase lists and page inventories
+depend on the product and are not included here.
 
 ## The three tiers
 
