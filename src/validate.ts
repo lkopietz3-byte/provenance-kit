@@ -187,7 +187,18 @@ export function validateClaims(
   input: ClaimsInput,
   options: ValidateClaimsOptions = {},
 ): ClaimOffense[] {
+  if (input == null || typeof input !== 'object') {
+    throw new TypeError(
+      `validateClaims: expected a Claim[] or { text, extractClaims }, got ${JSON.stringify(input)}.`,
+    );
+  }
   const claims = Array.isArray(input) ? input : input.extractClaims(input.text);
+  if (!Array.isArray(claims)) {
+    throw new TypeError(
+      'validateClaims: extractClaims(text) must return an array of Claim, got ' +
+        `${typeof claims}. Check your domain-specific extractor.`,
+    );
+  }
 
   const {
     certaintyPhrases = DEFAULT_CERTAINTY_PHRASES,
@@ -242,7 +253,10 @@ export function validateClaims(
       continue;
     }
 
-    if (requireSourceRefForTiers.includes(claim.tier) && !claim.sourceRef) {
+    // trim(): a whitespace-only sourceRef ("   ") is truthy but cites
+    // nothing — it should not satisfy "must cite what this was checked
+    // against" any more than an empty string does.
+    if (requireSourceRefForTiers.includes(claim.tier) && !claim.sourceRef?.trim()) {
       offenses.push({
         claimId: claim.id,
         claimText: claim.text,
