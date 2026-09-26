@@ -4,10 +4,13 @@
   "description": "Make \"how confident are we in this claim\" a structured, enforced, machine-checkable data field instead of an implicit copywriting choice.",
   "keywords": [
     "provenance",
+    "claims",
     "content-integrity",
-    "fact-checking",
+    "overclaiming",
+    "editorial",
     "trust",
-    "editorial"
+    "typescript",
+    "zero-dependencies"
   ],
   "author": "Lucas Kopietz",
   "license": "MIT",
