@@ -77,8 +77,26 @@ export type ClaimsInput =
   | Claim[]
   | { text: string; extractClaims: (text: string) => Claim[] };
 
+// Negation words/contractions checked for in the window before a match.
+// Contractions are listed explicitly rather than matched with a generic
+// `n't` pattern: a lookbehind-free `\bn't\b` never matches, because the
+// character right before "n" in "doesn't" or "don't" is a letter, not a
+// word boundary. Text is folded (curly apostrophes -> straight) before this
+// runs, so only the straight-apostrophe form is needed here.
 const NEGATION_WORDS =
-  /\b(not|never|no|isn't|is not|wasn't|was not|aren't|are not|weren't|were not|n't|without|nor|hardly|barely|far from)\b/i;
+  /\b(not|never|no|none|nothing|nor|neither|without|hardly|barely|far from|isn't|is not|wasn't|was not|aren't|are not|weren't|were not|doesn't|does not|don't|do not|didn't|did not|can't|cannot|can not|couldn't|could not|won't|will not|wouldn't|would not|shouldn't|should not|hasn't|has not|haven't|have not|hadn't|had not)\b/i;
+
+// Idioms that contain a negation word but do not negate what follows —
+// "no doubt X" and "not only X" both assert X. Stripped out of the window
+// before the negation check runs, so they don't wrongly suppress a real
+// certainty-phrase offense (a false negative in the dangerous direction).
+const NEGATION_IDIOM_EXCEPTIONS =
+  /\b(no doubt|no question|no wonder|no one|not only|not just|not merely|not simply)\b/gi;
+
+/** True if `ch` is a letter or digit under the same definition INTRAWORD_HYPHEN uses. */
+function isWordChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+}
 
 function normalizePhrase(input: CertaintyPhraseInput): CertaintyPhraseRule {
   return typeof input === 'string' ? { phrase: input } : input;
@@ -116,15 +134,27 @@ function foldText(text: string, caseSensitive: boolean): string {
   return caseSensitive ? folded : folded.toLowerCase();
 }
 
-/** Start index of every non-overlapping occurrence of `needle` in `haystack`. */
+/**
+ * Start index of every non-overlapping occurrence of `needle` in `haystack`
+ * that starts on a word boundary when `needle` itself starts with a letter
+ * or digit — so a phrase like "verified dataset" does not match inside
+ * "UNverified dataset", and "100% accurate" does not match inside
+ * "2100% accurate". A phrase starting with punctuation (e.g. "(verified)")
+ * is unrestricted. The END of a match is never boundary-checked on purpose:
+ * plural and inflected forms ("guarantees", "proprietary datasets") are
+ * meant to match.
+ */
 function findOccurrences(haystack: string, needle: string): number[] {
   if (!needle) return [];
+  const needsLeftBoundary = isWordChar(needle[0]);
   const indices: number[] = [];
   let start = 0;
   for (;;) {
     const idx = haystack.indexOf(needle, start);
     if (idx === -1) break;
-    indices.push(idx);
+    if (!needsLeftBoundary || !isWordChar(haystack[idx - 1])) {
+      indices.push(idx);
+    }
     start = idx + needle.length;
   }
   return indices;
@@ -139,7 +169,7 @@ function findOccurrences(haystack: string, needle: string): number[] {
  */
 function isNegated(text: string, matchIndex: number, windowSize: number): boolean {
   const start = Math.max(0, matchIndex - windowSize);
-  const preceding = text.slice(start, matchIndex);
+  const preceding = text.slice(start, matchIndex).replace(NEGATION_IDIOM_EXCEPTIONS, ' ');
   return NEGATION_WORDS.test(preceding);
 }
 
