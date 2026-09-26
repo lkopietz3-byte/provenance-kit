@@ -56,7 +56,9 @@ export function methodologyPageOutline(
 
   lines.push('## The tiers', '');
   for (const tier of tiers) {
-    const def = definitions[tier];
+    // See badge.ts: Object.hasOwn guards against a `tier` value that
+    // collides with an inherited Object.prototype key (e.g. "constructor").
+    const def = Object.hasOwn(definitions, tier) ? definitions[tier] : undefined;
     if (!def) {
       lines.push(
         `### ${tier}`,

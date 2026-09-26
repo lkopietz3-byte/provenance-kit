@@ -28,7 +28,12 @@ export function provenanceBadgeText(
   definitions: ProvenanceTierDefinitions,
   options: ProvenanceBadgeTextOptions = {},
 ): string {
-  const def = definitions[tier];
+  // Object.hasOwn (not `definitions[tier]` truthiness) so a tier value that
+  // happens to collide with an inherited Object.prototype key — "toString",
+  // "constructor", "__proto__", "hasOwnProperty" — is treated as missing
+  // instead of silently resolving to that inherited (non-)function and
+  // rendering "undefined" text instead of throwing.
+  const def = Object.hasOwn(definitions, tier) ? definitions[tier] : undefined;
   if (!def) {
     throw new Error(
       `provenanceBadgeText: no tier definition supplied for "${tier}". ` +
