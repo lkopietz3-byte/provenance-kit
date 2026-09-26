@@ -28,8 +28,14 @@ export type CertaintyPhraseInput = string | CertaintyPhraseRule;
  * array to `validateClaims({ certaintyPhrases: [...] })` to replace
  * this entirely, or spread `DEFAULT_CERTAINTY_PHRASES` alongside
  * domain-specific additions.
+ *
+ * This is a shared module-level constant, frozen (top level and each
+ * entry) so that one caller mutating it in place — `.push(...)`,
+ * `.sort()`, or `list[0].phrase = ...` instead of spreading it — cannot
+ * corrupt the default list for every other `validateClaims` call in the
+ * same process.
  */
-export const DEFAULT_CERTAINTY_PHRASES: CertaintyPhraseRule[] = [
+export const DEFAULT_CERTAINTY_PHRASES: readonly CertaintyPhraseRule[] = Object.freeze([
   {
     phrase: '(verified)',
     reason:
@@ -80,4 +86,4 @@ export const DEFAULT_CERTAINTY_PHRASES: CertaintyPhraseRule[] = [
     phrase: '100% accurate',
     reason: 'Absolute-accuracy claims are rarely defensible and should not appear outside verified, sourced claims.',
   },
-];
+].map((rule) => Object.freeze(rule)));

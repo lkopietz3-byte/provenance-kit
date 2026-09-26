@@ -53,7 +53,7 @@ export interface ValidateClaimsOptions {
    * list (`DEFAULT_CERTAINTY_PHRASES`) — override freely; different
    * products need different banned-phrase lists.
    */
-  certaintyPhrases?: CertaintyPhraseInput[];
+  certaintyPhrases?: readonly CertaintyPhraseInput[];
   /**
    * Tiers strong enough to back a certainty phrase. A claim using
    * certainty language whose tier is NOT in this list gets flagged.

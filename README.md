@@ -316,6 +316,12 @@ the other.
   why. `validateClaims` always returns the full list.
 - **Negation-aware.** "Not a proprietary dataset" is not the same claim
   as "proprietary dataset," and the scanner treats them differently.
+- **Shared defaults are frozen.** `PROVENANCE_TIERS` and
+  `DEFAULT_CERTAINTY_PHRASES` are module-level singletons, `Object.freeze`d
+  (including each phrase entry) so one caller mutating them in place can't
+  corrupt the default for every other call in the same process. Spread
+  them into your own array to extend — `[...DEFAULT_CERTAINTY_PHRASES,
+  ...yours]` — rather than pushing onto them directly.
 
 ## License
 
