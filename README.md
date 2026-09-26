@@ -215,17 +215,27 @@ log, your FAQ) — this library can't honestly know those for you.
 
 ## API surface
 
+Every export from `provenance-kit`, values and types:
+
 | Export | What it does |
 |---|---|
-| `ProvenanceTier` | `'verified' \| 'modeled' \| 'editorial'` |
-| `PROVENANCE_TIERS` | The three tiers, in display order |
-| `ProvenanceTierDefinition` | Caller-supplied `{ label, shortDescription, criteria }` |
-| `ProvenanceTierDefinitions` | `Partial<Record<ProvenanceTier, ProvenanceTierDefinition>>` |
-| `Claim` | `{ id, text, tier, sourceRef? }` |
-| `DEFAULT_CERTAINTY_PHRASES` | Generic starter list of overclaiming phrases |
-| `validateClaims(input, options?)` | Scans claims, returns `ClaimOffense[]` |
-| `provenanceBadgeText(tier, definitions, options?)` | Pure badge-label lookup |
-| `methodologyPageOutline(definitions, options?)` | Markdown methodology-page scaffold |
+| `ProvenanceTier` | Type: `'verified' \| 'modeled' \| 'editorial'` |
+| `PROVENANCE_TIERS` | Value: the three tiers, in display order. Frozen. |
+| `ProvenanceTierDefinition` | Type: caller-supplied `{ label, shortDescription, criteria }` |
+| `ProvenanceTierDefinitions` | Type: `Partial<Record<ProvenanceTier, ProvenanceTierDefinition>>` |
+| `Claim` | Type: `{ id, text, tier, sourceRef? }` |
+| `CertaintyPhraseRule` | Type: `{ phrase, reason? }` — one entry in a certainty-phrase list |
+| `CertaintyPhraseInput` | Type: `string \| CertaintyPhraseRule` — what you may pass in `certaintyPhrases` |
+| `DEFAULT_CERTAINTY_PHRASES` | Value: 11-entry generic starter list of overclaiming phrases. Frozen (including each entry). |
+| `ClaimOffenseReason` | Type: `'certainty_phrase_without_backing_tier' \| 'missing_source_ref' \| 'unknown_tier'` |
+| `ClaimOffense` | Type: one flagged problem — `{ claimId, claimText, phrase, reason, message, tier }` |
+| `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }` — what `validateClaims` accepts |
+| `ValidateClaimsOptions` | Type: `{ certaintyPhrases?, certaintyRequiresTier?, requireSourceRefForTiers?, caseSensitive?, negationWindow? }` |
+| `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input` or an `extractClaims` that doesn't return an array. |
+| `ProvenanceBadgeTextOptions` | Type: `{ includeShortDescription? }` |
+| `provenanceBadgeText(tier, definitions, options?)` | Function: pure badge-label lookup. Throws if `definitions[tier]` is missing. |
+| `MethodologyPageOutlineOptions` | Type: `{ title?, intro?, tiers?, productName? }` |
+| `methodologyPageOutline(definitions, options?)` | Function: Markdown methodology-page scaffold. A missing tier definition becomes a `TODO` line, not a throw — but `definitions` itself must be an object (`null`/`undefined` throws, same as any other JS function called on the wrong type). |
 
 ## When not to use this
 
