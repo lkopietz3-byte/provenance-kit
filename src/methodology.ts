@@ -38,6 +38,17 @@ const DEFAULT_INTRO =
  * does not do, its correction log, its FAQ) are left as `TODO` markers
  * for the caller to fill in; this function only auto-fills what it can
  * honestly know from the tier definitions themselves.
+ *
+ * Security: `label` and `criteria` from each tier definition are copied
+ * into the output **verbatim** — no Markdown escaping, no HTML escaping.
+ * This is Markdown text, not HTML, so it is not directly injectable by
+ * itself; but if you (or a later step in your pipeline) render this
+ * Markdown to HTML with a renderer that passes through raw HTML (several
+ * popular ones do by default), a tier definition sourced from anywhere
+ * other than your own source code — a CMS field a non-developer can
+ * edit, for example — is an HTML/script-injection path. Sanitize the
+ * rendered HTML, or configure your Markdown renderer to disable raw HTML,
+ * before showing it to anyone else.
  */
 export function methodologyPageOutline(
   definitions: ProvenanceTierDefinitions,

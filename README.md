@@ -227,6 +227,83 @@ log, your FAQ) — this library can't honestly know those for you.
 | `provenanceBadgeText(tier, definitions, options?)` | Pure badge-label lookup |
 | `methodologyPageOutline(definitions, options?)` | Markdown methodology-page scaffold |
 
+## When not to use this
+
+- **You need to know if a claim is true.** `validateClaims` is a wording
+  lint, not a fact-checker. It checks whether the LANGUAGE a claim uses
+  matches its declared tier — it has no way to know whether a `verified`
+  claim's `sourceRef` actually supports the claim, or whether the claim
+  itself is correct. A human (or a separate process) still has to do the
+  checking; this library only makes it loud when the wording and the tier
+  disagree.
+- **You need to track evidence over time.** This library has no concept of
+  "last checked on" or evidence staleness — `sourceRef` is a single
+  point-in-time string, not a record. If what you need is "does this claim
+  have a link to evidence, and how long since it was reviewed," that's a
+  different, complementary tool (see "Relationship to sibling kits" below).
+- **You need semantic understanding.** The scanner matches phrases, not
+  meaning. It cannot tell that "these numbers held up under scrutiny"
+  makes the same claim as "verified" in different words, and it cannot
+  tell that "not entirely unverified" is a hedge, not a clean negation.
+
+## Honest limits
+
+- **The certainty-phrase list is a starting point, not a taxonomy.**
+  `DEFAULT_CERTAINTY_PHRASES` has 11 entries drawn from one real incident.
+  It will not catch a phrase it doesn't know about (any of "confirmed
+  accurate," "clinically proven," "audited," "third-party tested" — none
+  of these are in the default list). Extend it for your product; a stale
+  or narrow list is a false sense of coverage, not a lint.
+- **Negation is a fixed character window, not a parser.** `isNegated`
+  looks at the `negationWindow` characters (default 40) immediately before
+  a match for a negation word. It has no idea where a clause ends: `"These
+  are not guesses, they are independently verified."` is NOT flagged,
+  because "not" is inside the 40-character window even though it
+  grammatically negates a different clause. Narrowing `negationWindow`
+  trades this false negative for more false positives on legitimately
+  negated claims further from the phrase. A handful of idioms that contain
+  a negation word without negating anything ("no doubt," "not only," "no
+  one," …) are special-cased so they don't suppress a real offense, but
+  this is not an exhaustive list of English idiom.
+- **The phrase-boundary rule is asymmetric on purpose.** A match must start
+  on a word boundary (so "unverified dataset" does not match the phrase
+  "verified dataset"), but the END of a match is never boundary-checked,
+  so plural and inflected forms match ("guaranteed," "proprietary
+  datasets"). This also means a phrase can match as a prefix of an
+  unrelated longer word if that word happens to start right after a
+  boundary — this is a deliberate trade-off toward fewer missed overclaims,
+  not a guarantee of natural-language-aware matching.
+- **Two default phrases overlap.** `"guarantee"` and `"guaranteed"` are
+  both in `DEFAULT_CERTAINTY_PHRASES`; a sentence using "guaranteed" is
+  reported twice (once per phrase), not once.
+- **Rendering helpers do not escape their output.** `provenanceBadgeText`
+  and `methodologyPageOutline` copy your tier definitions into their
+  return value **verbatim** — no HTML escaping, no Markdown escaping. That
+  is safe when you pass the result to a template that escapes on its own
+  (a React/Vue text child, `textContent`), and it is safe when your tier
+  definitions are hardcoded in your own source, as in every example above.
+  It is NOT safe to concatenate the result directly into an HTML string,
+  assign it to `innerHTML`, or render `methodologyPageOutline`'s Markdown
+  with a renderer that passes through raw HTML, if a tier definition's
+  text can come from anywhere a non-developer can edit it (a CMS field,
+  for example). Escape or sanitize first in that case.
+- **No runtime validation of `Claim` shape.** Beyond checking `tier` and
+  `sourceRef`, `validateClaims` does not verify that `id` and `text` are
+  actually strings — a malformed claim from untyped JSON can still throw
+  from deep inside string operations rather than up front.
+
+## Relationship to sibling kits
+
+`claims-registry-kit` is a complementary, not overlapping, tool: it tracks
+whether a public claim has a linked evidence reference and how long since
+that reference was last reviewed (`{ text, evidenceRef, verifiedAt }`).
+`provenance-kit` never stores a review date and has no concept of staleness
+— it only checks, at a point in time, whether a claim's wording is stronger
+than its declared tier allows. A product with both concerns (does this
+claim have current evidence, AND does its wording overclaim relative to its
+tier) would reasonably use both libraries side by side; neither replaces
+the other.
+
 ## Design notes
 
 - **No UI dependency.** `provenanceBadgeText` and `methodologyPageOutline`
