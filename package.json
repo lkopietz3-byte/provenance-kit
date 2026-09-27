@@ -1,6 +1,6 @@
 {
   "name": "provenance-kit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Make \"how confident are we in this claim\" a structured, enforced, machine-checkable data field instead of an implicit copywriting choice.",
   "keywords": [
     "provenance",
@@ -29,7 +29,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "sideEffects": false,
