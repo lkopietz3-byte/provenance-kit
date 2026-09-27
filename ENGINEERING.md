@@ -51,9 +51,9 @@ installed package — not the local source tree.
 
 ## Release / rollback
 
-Not yet published to any registry. Point consumers at a git URL or commit
-SHA until `npm publish` happens. Version stays `0.1.0` until a real
-release; `CHANGELOG.md` follows Keep a Changelog. A published version can
-be deprecated with `npm deprecate` (not yet applicable, nothing is
-published) but cannot be unpublished after 72 hours on the npm registry —
-treat any published `0.1.x` as permanent.
+`npm run verify` (lint, typecheck, test, build, verify:package) runs
+automatically before publish via the `prepublishOnly` script. To release:
+update `CHANGELOG.md` (Keep a Changelog format), bump `version`, then
+`npm publish`. A published version can be deprecated with `npm deprecate`,
+but npm allows `npm unpublish` only within 72 hours of publishing — after
+that, treat a published `0.1.x` as permanent and ship a fixed patch instead.
