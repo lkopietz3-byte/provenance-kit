@@ -54,8 +54,7 @@ hardcodes tier wording. You supply it via `ProvenanceTierDefinition`.
 npm install provenance-kit
 ```
 
-(Not published to a registry yet — point at the local path or a git URL
-until it is.)
+Or build from source: clone the repository and run `npm install && npm run build`.
 
 ## Usage
 
