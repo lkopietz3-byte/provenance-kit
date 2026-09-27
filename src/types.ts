@@ -25,12 +25,18 @@
  */
 export type ProvenanceTier = 'verified' | 'modeled' | 'editorial';
 
-/** All valid tiers, in the order most products should present them. */
-export const PROVENANCE_TIERS: readonly ProvenanceTier[] = [
+/**
+ * All valid tiers, in the order most products should present them.
+ * `readonly` at the type level and `Object.freeze`d at runtime, so a
+ * caller who reaches this shared module-level array through a type
+ * assertion or plain JS cannot mutate it out from under every other
+ * consumer in the process.
+ */
+export const PROVENANCE_TIERS: readonly ProvenanceTier[] = Object.freeze([
   'verified',
   'modeled',
   'editorial',
-];
+]);
 
 /**
  * A caller-supplied human-readable definition of what a tier means in

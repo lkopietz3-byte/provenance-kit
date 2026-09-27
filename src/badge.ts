@@ -22,13 +22,26 @@ export interface ProvenanceBadgeTextOptions {
  * definition for the requested tier — a missing definition means a
  * badge would otherwise silently render blank, which is exactly the
  * kind of unlabeled claim this library exists to prevent.
+ *
+ * Security: the returned string is `label` (and optionally
+ * `shortDescription`) copied through **verbatim, with no HTML escaping**.
+ * That is safe as a React/Vue/Svelte text child or a DOM `textContent`
+ * assignment (those escape on your behalf), but it is NOT safe to
+ * concatenate directly into an HTML string or assign to `innerHTML` — if
+ * a tier definition can contain content you did not write yourself (e.g.
+ * it comes from a CMS field), escape this return value before doing that.
  */
 export function provenanceBadgeText(
   tier: ProvenanceTier,
   definitions: ProvenanceTierDefinitions,
   options: ProvenanceBadgeTextOptions = {},
 ): string {
-  const def = definitions[tier];
+  // Object.hasOwn (not `definitions[tier]` truthiness) so a tier value that
+  // happens to collide with an inherited Object.prototype key — "toString",
+  // "constructor", "__proto__", "hasOwnProperty" — is treated as missing
+  // instead of silently resolving to that inherited (non-)function and
+  // rendering "undefined" text instead of throwing.
+  const def = Object.hasOwn(definitions, tier) ? definitions[tier] : undefined;
   if (!def) {
     throw new Error(
       `provenanceBadgeText: no tier definition supplied for "${tier}". ` +
