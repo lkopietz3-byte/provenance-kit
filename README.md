@@ -56,6 +56,10 @@ npm install provenance-kit
 
 Or build from source: clone the repository and run `npm install && npm run build`.
 
+Ships as ESM; `require()` also works on Node versions that support
+`require(esm)` (20.19+, 22.12+). No runtime dependencies, needs Node 20 or
+later.
+
 ## Usage
 
 ### 1. Define your claims
@@ -292,6 +296,24 @@ than its declared tier allows. A product with both concerns (does this
 claim have current evidence, AND does its wording overclaim relative to its
 tier) would reasonably use both libraries side by side; neither replaces
 the other.
+
+[grounding-kit](https://github.com/lkopietz3-byte/grounding-kit) checks a
+different question: whether a generated sentence is actually backed by the
+evidence map you gave the model, classifying it as `grounded`, `placeholder`,
+`ungrounded`, or `invalid`. `provenance-kit` never looks at evidence at all —
+it only checks whether a claim's certainty-implying wording matches its
+declared tier. A pipeline producing AI-generated, tiered claims could run
+`grounding-kit` first (is this sentence grounded in the evidence at all) and
+`provenance-kit` second (does its wording overclaim relative to its tier).
+
+[corroboration-kit](https://github.com/lkopietz3-byte/corroboration-kit)
+turns caller-collected signals about a claim into a bounded verdict
+(`confirmed`, `likely`, `mixed`, `not-found`, `inconclusive`) given a
+declared coverage. It does not know about provenance tiers, and
+`provenance-kit` does not know about corroboration verdicts or signals;
+the two are not integrated in code. A product could reasonably use a
+`corroboration-kit` verdict as one input to the human decision of which
+`ProvenanceTier` a claim is entitled to.
 
 ## Design notes
 
