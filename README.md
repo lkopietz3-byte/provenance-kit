@@ -1,10 +1,6 @@
 # provenance-kit
 
-Make "how confident are we in this claim" a structured, enforced,
-machine-checkable data field — instead of an implicit copywriting choice
-that quietly drifts as a site grows.
-
-Zero runtime dependencies. Framework-agnostic. TypeScript, strict mode.
+Provenance Kit lets a product label claims as verified, modeled, or editorial, then check that public wording matches the claim's evidence tier. The TypeScript library has no runtime dependencies and works across frameworks.
 
 ## A synthetic failure pattern this library addresses
 
