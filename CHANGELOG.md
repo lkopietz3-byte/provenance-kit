@@ -3,9 +3,39 @@
 All notable changes to this project are documented in this file. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-09-27
+
+### Added
+
+- CommonJS `require()` support: a `"default"` condition next to `"import"`
+  in the `exports` entry, pointing at the same built file. Proven against
+  the packed tarball with `require()` on Node 26.3.0, and guarded in CI on
+  Node 20, 22, and 24 by an extended `scripts/verify-package.mjs`.
+- README: a "Relationship to sibling kits" section now also covers
+  [grounding-kit](https://github.com/lkopietz3-byte/grounding-kit) (checks
+  whether generated text is grounded in supplied evidence, a different
+  question from this package's tier-vs-wording check) and
+  [corroboration-kit](https://github.com/lkopietz3-byte/corroboration-kit)
+  (turns collected signals into a bounded verdict that could inform, but is
+  not integrated with, a claim's provenance tier).
+
+### Fixed
+
+- The shipped `.js.map` file now inlines the original TypeScript source
+  (`inlineSources` in `tsconfig.build.json`), so it resolves without the
+  unshipped `src/` directory. `.d.ts.map` generation is now disabled instead
+  of shipping a source map with an unresolvable `../src/*.ts` path; the
+  `.d.ts` declaration file itself is unaffected.
+
+### Changed
+
+- README: added an ESM/CommonJS install note (`require()` works on Node
+  versions that support `require(esm)`); the README previously did not
+  state a module format at all.
+
 ## [0.1.0] - 2026-09-27
 
-First release. Not yet published to npm.
+First release.
 
 ### Added
 
