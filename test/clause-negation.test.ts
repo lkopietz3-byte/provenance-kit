@@ -18,13 +18,13 @@ const CLAUSE_BOUNDARIES = [
   ['colon', ':'],
   ['exclamation mark', '!'],
   ['question mark', '?'],
-  ['em dash', '—'],
-  ['en dash', '–'],
+  ['em dash', '\u2014'],
+  ['en dash', '\u2013'],
   ['line feed', '\n'],
   ['carriage return + line feed', '\r\n'],
   ['carriage return', '\r'],
-  ['line separator U+2028', ' '],
-  ['paragraph separator U+2029', ' '],
+  ['line separator U+2028', '\u2028'],
+  ['paragraph separator U+2029', '\u2029'],
   ['next line U+0085', '\u0085'],
   ['vertical tab', '\v'],
   ['form feed', '\f'],
@@ -91,7 +91,7 @@ describe('a negation in the same clause still suppresses the phrase', () => {
   it('suppresses "We don\'t claim it is verified" (straight and curly apostrophes)', () => {
     const options = { certaintyPhrases: ['verified'] };
     expect(flaggedPhrases("We don't claim it is verified", options)).toEqual([]);
-    expect(flaggedPhrases('We don’t claim it is verified', options)).toEqual([]);
+    expect(flaggedPhrases('We don\u2019t claim it is verified', options)).toEqual([]);
   });
 
   it.each([
@@ -108,12 +108,12 @@ describe('a negation in the same clause still suppresses the phrase', () => {
   it('a boundary BEFORE the negation is irrelevant', () => {
     expect(flaggedPhrases('Yes, this is not a proprietary dataset.')).toEqual([]);
     expect(flaggedPhrases('Note: this is not a proprietary dataset.')).toEqual([]);
-    expect(flaggedPhrases('First point. Second point — it is not a proprietary dataset.')).toEqual([]);
+    expect(flaggedPhrases('First point. Second point \u2014 it is not a proprietary dataset.')).toEqual([]);
   });
 
   it('a boundary AFTER the phrase is irrelevant', () => {
     expect(flaggedPhrases('Not a proprietary dataset, and never was.')).toEqual([]);
-    expect(flaggedPhrases('This is not a proprietary dataset—it is modeled.')).toEqual([]);
+    expect(flaggedPhrases('This is not a proprietary dataset\u2014it is modeled.')).toEqual([]);
   });
 
   it('hyphens and apostrophes are not clause boundaries', () => {

@@ -3,19 +3,28 @@
 // The scanner. Turns "does this claim sound more certain than its tier
 // allows" from an implicit copywriting judgment into a machine-checkable
 // rule, so it can run in CI and fail a build the same way a type error
-// does. This is the direct generalization of the pattern that caught
-// ~150 false "(verified)" labels on a live site after they had already
-// shipped — see the README for the incident this is built to catch
-// before it ships, not after.
+// does. It checks wording against a declared tier; it cannot check that a
+// claim is true.
+//
+// Two rules run through this file:
+//   1. Caller input is read ONCE. A getter, a Proxy or a sparse array can
+//      answer differently the second time, so `readOptions` and `readClaims`
+//      copy everything a single time and the scan only uses those copies.
+//   2. A malformed argument throws a clear error; it never silently changes
+//      what is scanned (an option read as "off", a hole skipped).
 
 import type { Claim, ProvenanceTier } from './types.js';
+import { PROVENANCE_TIERS } from './types.js';
+import { DEFAULT_CERTAINTY_PHRASES, type CertaintyPhraseInput } from './certainty-phrases.js';
 import {
-  DEFAULT_CERTAINTY_PHRASES,
-  type CertaintyPhraseInput,
-  type CertaintyPhraseRule,
-} from './certainty-phrases.js';
+  describeType,
+  displayValue,
+  escapeForDisplay,
+  isPlainObject,
+  isVisiblyBlank,
+} from './text.js';
 
-const VALID_TIERS: ProvenanceTier[] = ['verified', 'modeled', 'editorial'];
+const PREFIX = 'validateClaims: ';
 
 /** Why a given offense was raised. */
 export type ClaimOffenseReason =
@@ -47,28 +56,45 @@ export interface ClaimOffense {
   tier: ProvenanceTier | (string & {}) | null;
 }
 
+/**
+ * Options for `validateClaims`. The whole object must be a plain object (or
+ * `undefined`); every field is validated before any claim is scanned, and a
+ * bad value throws instead of being read as "off".
+ */
 export interface ValidateClaimsOptions {
   /**
    * Phrases that assert certainty. Defaults to a small generic starter
    * list (`DEFAULT_CERTAINTY_PHRASES`) — override freely; different
-   * products need different banned-phrase lists.
+   * products need different banned-phrase lists. Must be a dense array of
+   * strings or `{ phrase, reason? }` objects (a hole or a non-string phrase
+   * throws `TypeError`). A phrase that is empty after folding (for example an
+   * empty string, or only invisible characters) matches nothing.
    */
   certaintyPhrases?: readonly CertaintyPhraseInput[];
   /**
    * Tiers strong enough to back a certainty phrase. A claim using
    * certainty language whose tier is NOT in this list gets flagged.
-   * Default: `['verified']`.
+   * Default: `['verified']`. Must be a dense array of the three tier names
+   * (`TypeError` for a wrong type, `RangeError` for an unknown name).
    */
   certaintyRequiresTier?: ProvenanceTier[];
   /**
    * Tiers that must carry a non-empty `sourceRef`. Default: `['verified']`
    * — a claim asserting it was checked against a source should say what
-   * that source was.
+   * that source was. Validated like `certaintyRequiresTier`, so a misspelled
+   * tier throws instead of silently requiring nothing.
    */
   requireSourceRefForTiers?: ProvenanceTier[];
-  /** Case-sensitive phrase matching. Default false. */
+  /** Case-sensitive phrase matching. Default false. Must be a real boolean. */
   caseSensitive?: boolean;
-  /** How many characters before a phrase match to scan for a negation. Default 40. */
+  /**
+   * How many characters before a phrase match to scan for a negation word,
+   * counted in the folded text. The scan also stops at the nearest clause
+   * boundary (`, ; . : ! ?`, an em or en dash, or a line break), so a
+   * negation in an earlier clause never suppresses a later phrase. Default 40.
+   * Must be an integer >= 0 or `Infinity` (whole clause); `0` turns negation
+   * handling off.
+   */
   negationWindow?: number;
 }
 
@@ -115,10 +141,6 @@ function codePointBefore(text: string, index: number): number | undefined {
     if (lead >= 0xd800 && lead <= 0xdbff) return text.codePointAt(index - 2);
   }
   return unit;
-}
-
-function normalizePhrase(input: CertaintyPhraseInput): CertaintyPhraseRule {
-  return typeof input === 'string' ? { phrase: input } : input;
 }
 
 // Characters a renderer draws as nothing but that break a plain substring
@@ -232,6 +254,188 @@ function isNegated(text: string, matchIndex: number, windowSize: number): boolea
   return NEGATION_WORDS.test(preceding.replace(NEGATION_IDIOM_EXCEPTIONS, ' '));
 }
 
+interface ScanOptions {
+  phrases: { phrase: string; reason: string | undefined; folded: string }[];
+  certaintyRequiresTier: readonly ProvenanceTier[];
+  requireSourceRefForTiers: readonly ProvenanceTier[];
+  caseSensitive: boolean;
+  negationWindow: number;
+}
+
+/** One claim, copied once from caller input and checked for shape. */
+interface ClaimSnapshot {
+  id: string;
+  text: string;
+  /** Not validated here: an unrecognized tier is reported as an offense. */
+  tier: unknown;
+  sourceRef: string | undefined;
+}
+
+function isTier(value: unknown): value is ProvenanceTier {
+  return typeof value === 'string' && (PROVENANCE_TIERS as readonly string[]).includes(value);
+}
+
+/**
+ * Copy a list once through an indexed traversal that rejects holes. A
+ * `.map` or `.forEach` would skip a hole while `for...of` visits it as
+ * `undefined`, so a sparse array validated one way and processed the other way
+ * crashes. `Object.hasOwn` (not `in`) keeps an inherited `Array.prototype`
+ * entry from filling a hole.
+ */
+function readDenseArray(list: unknown[], name: string): unknown[] {
+  const length = list.length;
+  const copy: unknown[] = [];
+  for (let i = 0; i < length; i++) {
+    if (!Object.hasOwn(list, i)) {
+      throw new TypeError(`${PREFIX}${name}[${i}] is missing (a hole in a sparse array).`);
+    }
+    copy.push(list[i]);
+  }
+  return copy;
+}
+
+function readTierList(value: unknown, name: string, fallback: readonly ProvenanceTier[]): readonly ProvenanceTier[] {
+  if (value === undefined) return fallback;
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${PREFIX}options.${name} must be an array (received ${describeType(value)}).`);
+  }
+  const tiers = readDenseArray(value, `options.${name}`);
+  tiers.forEach((tier, i) => {
+    if (typeof tier !== 'string') {
+      throw new TypeError(
+        `${PREFIX}options.${name}[${i}] must be a string tier name (received ${describeType(tier)}).`,
+      );
+    }
+    if (!isTier(tier)) {
+      throw new RangeError(
+        `${PREFIX}options.${name}[${i}] must be one of ${PROVENANCE_TIERS.join(', ')} ` +
+          `(received ${displayValue(tier)}).`,
+      );
+    }
+  });
+  return tiers as ProvenanceTier[];
+}
+
+function readPhrases(value: unknown, caseSensitive: boolean): ScanOptions['phrases'] {
+  const input = value === undefined ? DEFAULT_CERTAINTY_PHRASES : value;
+  if (!Array.isArray(input)) {
+    throw new TypeError(`${PREFIX}options.certaintyPhrases must be an array (received ${describeType(input)}).`);
+  }
+  return readDenseArray(input, 'options.certaintyPhrases').map((entry, i) => {
+    const name = `options.certaintyPhrases[${i}]`;
+    let phrase: unknown = entry;
+    let reason: unknown;
+    if (typeof entry !== 'string') {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        throw new TypeError(`${PREFIX}${name} must be a string or { phrase, reason } (received ${describeType(entry)}).`);
+      }
+      const rule = entry as { phrase?: unknown; reason?: unknown };
+      phrase = rule.phrase;
+      reason = rule.reason;
+      if (typeof phrase !== 'string') {
+        throw new TypeError(`${PREFIX}${name}.phrase must be a string (received ${describeType(phrase)}).`);
+      }
+      if (reason !== undefined && reason !== null && typeof reason !== 'string') {
+        throw new TypeError(`${PREFIX}${name}.reason must be a string (received ${describeType(reason)}).`);
+      }
+    }
+    return {
+      phrase: phrase as string,
+      reason: typeof reason === 'string' && !isVisiblyBlank(reason) ? reason : undefined,
+      folded: matchView(foldText(phrase as string, caseSensitive)),
+    };
+  });
+}
+
+/** Read every option once and validate it. Nothing here touches a claim. */
+function readOptions(options: unknown): ScanOptions {
+  if (options !== undefined && !isPlainObject(options)) {
+    throw new TypeError(`${PREFIX}options must be a plain object or undefined (received ${describeType(options)}).`);
+  }
+  const raw = options ?? {};
+  const certaintyPhrases = raw.certaintyPhrases;
+  const certaintyRequiresTier = raw.certaintyRequiresTier;
+  const requireSourceRefForTiers = raw.requireSourceRefForTiers;
+  const rawCaseSensitive = raw.caseSensitive;
+  const rawNegationWindow = raw.negationWindow;
+  const caseSensitive = rawCaseSensitive === undefined ? false : rawCaseSensitive;
+  const negationWindow = rawNegationWindow === undefined ? 40 : rawNegationWindow;
+
+  if (typeof caseSensitive !== 'boolean') {
+    throw new TypeError(`${PREFIX}options.caseSensitive must be a boolean (received ${describeType(caseSensitive)}).`);
+  }
+  if (typeof negationWindow !== 'number') {
+    throw new TypeError(`${PREFIX}options.negationWindow must be a number (received ${describeType(negationWindow)}).`);
+  }
+  if (!(negationWindow === Infinity || (Number.isInteger(negationWindow) && negationWindow >= 0))) {
+    throw new RangeError(
+      `${PREFIX}options.negationWindow must be an integer >= 0 or Infinity (received ${describeType(negationWindow)}).`,
+    );
+  }
+  return {
+    phrases: readPhrases(certaintyPhrases, caseSensitive),
+    certaintyRequiresTier: readTierList(certaintyRequiresTier, 'certaintyRequiresTier', ['verified']),
+    requireSourceRefForTiers: readTierList(requireSourceRefForTiers, 'requireSourceRefForTiers', ['verified']),
+    caseSensitive,
+    negationWindow,
+  };
+}
+
+/** Copy one claim once and check the shape of the fields the scan uses. */
+function readClaim(entry: unknown, index: number): ClaimSnapshot {
+  const name = `${PREFIX}claims[${index}]`;
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+    throw new TypeError(`${name} must be an object (received ${describeType(entry)}).`);
+  }
+  const record = entry as Record<string, unknown>;
+  const id = record.id;
+  const text = record.text;
+  const tier = record.tier;
+  const sourceRef = record.sourceRef;
+  if (typeof id !== 'string') {
+    throw new TypeError(`${name}.id must be a string (received ${describeType(id)}).`);
+  }
+  if (typeof text !== 'string') {
+    throw new TypeError(`${name}.text must be a string (received ${describeType(text)}).`);
+  }
+  if (sourceRef !== undefined && sourceRef !== null && typeof sourceRef !== 'string') {
+    throw new TypeError(`${name}.sourceRef must be a string, null or undefined (received ${describeType(sourceRef)}).`);
+  }
+  return { id, text, tier, sourceRef: sourceRef ?? undefined };
+}
+
+/** Resolve `input` to a dense list of claim snapshots, reading everything once. */
+function readClaims(input: unknown): ClaimSnapshot[] {
+  if (input === null || typeof input !== 'object') {
+    throw new TypeError(
+      `${PREFIX}expected a Claim[] or { text, extractClaims }, got ${describeType(input)}.`,
+    );
+  }
+  let claims: unknown;
+  if (Array.isArray(input)) {
+    claims = input;
+  } else {
+    const source = input as { text?: unknown; extractClaims?: unknown };
+    const extractClaims = source.extractClaims;
+    const text = source.text;
+    if (typeof extractClaims !== 'function') {
+      throw new TypeError(`${PREFIX}extractClaims must be a function (received ${describeType(extractClaims)}).`);
+    }
+    if (typeof text !== 'string') {
+      throw new TypeError(`${PREFIX}text must be a string (received ${describeType(text)}).`);
+    }
+    claims = (extractClaims as (text: string) => unknown).call(input, text);
+    if (!Array.isArray(claims)) {
+      throw new TypeError(
+        `${PREFIX}extractClaims(text) must return an array of Claim, got ` +
+          `${claims instanceof Promise ? 'a promise (async extractors are not supported)' : describeType(claims)}. ` +
+          'Check your domain-specific extractor.',
+      );
+    }
+  }
+  return readDenseArray(claims as unknown[], 'claims').map(readClaim);
+}
+
 /**
  * Scan a list of claims (or raw text plus an extractor) for provenance
  * problems: certainty language not backed by an appropriate tier, tiers
@@ -240,48 +444,58 @@ function isNegated(text: string, matchIndex: number, windowSize: number): boolea
  * boolean — so callers can render a real report (which claim, which
  * phrase, why) in a CI failure or a lint output.
  *
- * An empty return value means the claims passed every configured check.
+ * An empty return value means the claims passed every configured check
+ * under those rules. It does not mean the claims are true.
+ *
+ * Input rules:
+ * - `input` is a `Claim[]` or `{ text, extractClaims }`. `extractClaims` is
+ *   called once, as a method of `input`, and must return an array
+ *   synchronously.
+ * - The claims list must be dense: a hole in a sparse array throws
+ *   `TypeError`, as does a claim that is not an object, an `id` or `text` that
+ *   is not a string, or a `sourceRef` that is not a string, `null` or
+ *   `undefined`. A wrong or unknown `tier` is NOT an error: it is reported as
+ *   an `unknown_tier` offense.
+ * - Everything the caller passes in (claims, options, getters, proxies) is
+ *   read once and copied before any check runs; nothing is mutated.
+ *   Bad `options` throw `TypeError` or `RangeError` before any claim is scanned.
+ *
+ * Text rules:
+ * - Matching folds Unicode compatibility forms, invisible formatting
+ *   characters, hyphenation, spacing (a line break reads as a space) and, unless
+ *   `caseSensitive`, case.
+ * - A phrase that starts with a letter or digit must start on a word boundary,
+ *   judged on whole code points. The end of a match is never boundary-checked.
+ * - A negation word suppresses a phrase only inside the same clause and within
+ *   `negationWindow`.
+ * - `message` text is safe to print: control characters, line breaks and bidi
+ *   formatting characters that came from caller strings are shown as `\uXXXX`
+ *   escapes. `claimId`, `claimText` and `phrase` are structured data and are
+ *   returned exactly as given.
+ *
+ * @throws {TypeError} malformed `input`, claims or options (see above).
+ * @throws {RangeError} an out-of-range option value.
  */
 export function validateClaims(
   input: ClaimsInput,
   options: ValidateClaimsOptions = {},
 ): ClaimOffense[] {
-  if (input == null || typeof input !== 'object') {
-    throw new TypeError(
-      `validateClaims: expected a Claim[] or { text, extractClaims }, got ${JSON.stringify(input)}.`,
-    );
-  }
-  const claims = Array.isArray(input) ? input : input.extractClaims(input.text);
-  if (!Array.isArray(claims)) {
-    throw new TypeError(
-      'validateClaims: extractClaims(text) must return an array of Claim, got ' +
-        `${typeof claims}. Check your domain-specific extractor.`,
-    );
-  }
-
-  const {
-    certaintyPhrases = DEFAULT_CERTAINTY_PHRASES,
-    certaintyRequiresTier = ['verified'],
-    requireSourceRefForTiers = ['verified'],
-    caseSensitive = false,
-    negationWindow = 40,
-  } = options;
-
-  const normalizedPhrases = certaintyPhrases.map(normalizePhrase);
+  const config = readOptions(options);
+  const claims = readClaims(input);
+  const { certaintyRequiresTier, requireSourceRefForTiers, caseSensitive, negationWindow } = config;
   const offenses: ClaimOffense[] = [];
 
   for (const claim of claims) {
-    const tierIsValid = claim.tier != null && VALID_TIERS.includes(claim.tier);
+    const tier = claim.tier;
+    const validTier = isTier(tier) ? tier : undefined;
+    const tierField = typeof tier === 'string' ? tier : null;
     const foldedText = foldText(claim.text, caseSensitive);
     const searchText = matchView(foldedText);
 
-    for (const { phrase, reason } of normalizedPhrases) {
-      const occurrences = findOccurrences(searchText, matchView(foldText(phrase, caseSensitive)));
-      for (const idx of occurrences) {
+    for (const { phrase, reason, folded } of config.phrases) {
+      for (const idx of findOccurrences(searchText, folded)) {
         if (isNegated(foldedText, idx, negationWindow)) continue;
-
-        const backed = tierIsValid && certaintyRequiresTier.includes(claim.tier);
-        if (backed) continue;
+        if (validTier !== undefined && certaintyRequiresTier.includes(validTier)) continue;
 
         offenses.push({
           claimId: claim.id,
@@ -289,43 +503,46 @@ export function validateClaims(
           phrase,
           reason: 'certainty_phrase_without_backing_tier',
           message:
-            reason ??
-            `Claim uses certainty language ("${phrase}") but is tiered ` +
-              `${tierIsValid ? `"${claim.tier}"` : '(missing/invalid tier)'}, not one of: ` +
-              `${certaintyRequiresTier.join(', ')}.`,
-          tier: typeof claim.tier === 'string' ? claim.tier : null,
+            reason !== undefined
+              ? escapeForDisplay(reason)
+              : `Claim uses certainty language ("${escapeForDisplay(phrase)}") but is tiered ` +
+                `${validTier !== undefined ? `"${validTier}"` : '(missing/invalid tier)'}, not one of: ` +
+                `${certaintyRequiresTier.join(', ')}.`,
+          tier: tierField,
         });
       }
     }
 
-    if (!tierIsValid) {
+    if (validTier === undefined) {
       offenses.push({
         claimId: claim.id,
         claimText: claim.text,
         phrase: null,
         reason: 'unknown_tier',
         message:
-          `Claim "${claim.id}" has no valid provenance tier ` +
-          `(got ${JSON.stringify(claim.tier)}). Every claim must be ` +
+          `Claim "${escapeForDisplay(claim.id)}" has no valid provenance tier ` +
+          `(got ${displayValue(tier)}). Every claim must be ` +
           `'verified', 'modeled', or 'editorial'.`,
-        tier: typeof claim.tier === 'string' ? claim.tier : null,
+        tier: tierField,
       });
       continue;
     }
 
-    // trim(): a whitespace-only sourceRef ("   ") is truthy but cites
-    // nothing — it should not satisfy "must cite what this was checked
-    // against" any more than an empty string does.
-    if (requireSourceRefForTiers.includes(claim.tier) && !claim.sourceRef?.trim()) {
+    // A sourceRef of only whitespace, zero-width or bidi control characters
+    // is "visibly empty": it cites nothing, exactly like an empty string.
+    if (
+      requireSourceRefForTiers.includes(validTier) &&
+      (claim.sourceRef === undefined || isVisiblyBlank(claim.sourceRef))
+    ) {
       offenses.push({
         claimId: claim.id,
         claimText: claim.text,
         phrase: null,
         reason: 'missing_source_ref',
         message:
-          `Claim "${claim.id}" is tiered "${claim.tier}" but has no sourceRef. ` +
+          `Claim "${escapeForDisplay(claim.id)}" is tiered "${validTier}" but has no sourceRef. ` +
           `Claims at this tier must cite what they were checked against.`,
-        tier: claim.tier,
+        tier: validTier,
       });
     }
   }

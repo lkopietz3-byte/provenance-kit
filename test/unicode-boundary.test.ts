@@ -40,8 +40,8 @@ describe('the left boundary reads the whole code point before the match', () => 
   });
 
   it('keeps the BMP and ASCII behavior (controls)', () => {
-    expect(flaggedPhrases('éverified dataset')).toEqual([]); // é
-    expect(flaggedPhrases('éverified dataset')).toEqual([]); // e + combining acute, composed by NFKC
+    expect(flaggedPhrases('\u00e9verified dataset')).toEqual([]); // \u00e9
+    expect(flaggedPhrases('e\u0301verified dataset')).toEqual([]); // e + combining acute, composed by NFKC
     expect(flaggedPhrases('unverified dataset')).toEqual([]);
     expect(flaggedPhrases('7verified dataset')).toEqual([]);
     expect(flaggedPhrases(' verified dataset')).toEqual(['verified dataset']);
@@ -76,19 +76,19 @@ describe('a phrase that starts with a supplementary-plane character', () => {
 
 describe('invisible formatting characters do not hide a phrase', () => {
   it.each([
-    ['left-to-right isolate U+2066', '⁦'],
-    ['right-to-left isolate U+2067', '⁧'],
-    ['first-strong isolate U+2068', '⁨'],
-    ['pop directional isolate U+2069', '⁩'],
-    ['Arabic letter mark U+061C', '؜'],
-    ['left-to-right embedding U+202A', '‪'],
-    ['right-to-left override U+202E', '‮'],
-    ['variation selector U+FE0F', '️'],
-    ['combining grapheme joiner U+034F', '͏'],
-    ['Mongolian free variation selector U+180B', '᠋'],
-    ['invisible times U+2062', '⁢'],
+    ['left-to-right isolate U+2066', '\u2066'],
+    ['right-to-left isolate U+2067', '\u2067'],
+    ['first-strong isolate U+2068', '\u2068'],
+    ['pop directional isolate U+2069', '\u2069'],
+    ['Arabic letter mark U+061C', '\u061c'],
+    ['left-to-right embedding U+202A', '\u202a'],
+    ['right-to-left override U+202E', '\u202e'],
+    ['variation selector U+FE0F', '\ufe0f'],
+    ['combining grapheme joiner U+034F', '\u034f'],
+    ['Mongolian free variation selector U+180B', '\u180b'],
+    ['invisible times U+2062', '\u2062'],
     ['tag character U+E0041', '\u{E0041}'],
-    ['zero width space U+200B (already handled)', '​'],
+    ['zero width space U+200B (already handled)', '\u200b'],
   ])('finds "independently verified" with %s inside a word and next to the space', (_label, invisible) => {
     expect(flaggedPhrases(`Our data is indepen${invisible}dently${invisible} verified.`)).toEqual([
       'independently verified',
@@ -96,19 +96,19 @@ describe('invisible formatting characters do not hide a phrase', () => {
   });
 
   it('finds a hyphenated phrase with an invisible character next to the hyphen', () => {
-    expect(flaggedPhrases('Every number is fact⁦-checked.')).toEqual(['fact-checked']);
+    expect(flaggedPhrases('Every number is fact\u2066-checked.')).toEqual(['fact-checked']);
   });
 
   it('finds a phrase configured with an invisible character in it', () => {
-    expect(flaggedPhrases('This is clinically proven.', { certaintyPhrases: ['clinically⁦ proven'] })).toEqual([
-      'clinically⁦ proven',
+    expect(flaggedPhrases('This is clinically proven.', { certaintyPhrases: ['clinically\u2066 proven'] })).toEqual([
+      'clinically\u2066 proven',
     ]);
   });
 
   it('an invisible character is not a word character, so it does not create or remove a left boundary', () => {
     // "un" + isolate + "verified dataset": the invisible character is removed,
     // so the text reads "unverified dataset" and is not a match.
-    expect(flaggedPhrases('un⁦verified dataset')).toEqual([]);
+    expect(flaggedPhrases('un\u2066verified dataset')).toEqual([]);
   });
 });
 
@@ -134,9 +134,9 @@ describe('an empty phrase matches nothing and never loops', () => {
   it.each([
     ['an empty string', ['']],
     ['an empty rule', [{ phrase: '' }]],
-    ['a phrase made only of invisible characters', ['​⁦﻿']],
+    ['a phrase made only of invisible characters', ['\u200b\u2066\ufeff']],
   ])('terminates with no offense for %s', (_label, certaintyPhrases) => {
-    expect(flaggedPhrases('Anything at all, even ​ nothing.', { certaintyPhrases })).toEqual([]);
+    expect(flaggedPhrases('Anything at all, even \u200b nothing.', { certaintyPhrases })).toEqual([]);
   });
 
   it('an empty phrase does not stop other phrases from matching', () => {
