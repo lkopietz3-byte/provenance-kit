@@ -146,9 +146,11 @@ Properly negated phrases are not flagged — `"these figures are not a
 proprietary dataset"` passes clean, because the scanner checks the text
 immediately before each match, back to the start of its clause, for a
 negation word (`not`, `isn't`, `without`, `never`, …). A clause boundary
-(`, ; . : ! ?`, an em or en dash, or a line break) between the negation and the
-phrase ends the negation, so `"These are not guesses, they are independently
-verified."` is flagged.
+(`, ; . : ! ?`, an em or en dash, or a line break) or the word `and` or `but`
+between the negation and the phrase ends the negation, so `"These are not
+guesses, they are independently verified."` and `"It is not a guess but a
+verified dataset."` are flagged. The negation check can still hide a real
+overclaim; see Honest limits.
 
 Bad input throws instead of being skipped: a sparse claims array, a claim
 that is not an object, an `id` or `text` that is not a string, or an option
@@ -272,25 +274,49 @@ Every export from `provenance-kit`, values and types:
   of these are in the default list). Extend it for your product; a stale
   or narrow list is a false sense of coverage, not a lint.
 - **Negation is a character window that stops at a clause boundary, not a
-  parser.** The scanner looks at up to `negationWindow` characters (default
-  40) immediately before a match, cut off at the nearest `, ; . : ! ?`, em
-  dash, en dash or line break, for a negation word. That fixes the classic
-  false negative (`"These are not guesses, they are independently verified."`
-  is flagged), but the cut is punctuation, not grammar, and it errs toward
-  reporting:
+  parser, and it can hide a real overclaim.** The scanner looks at up to
+  `negationWindow` characters (default 40) immediately before a match, cut off
+  at the nearest `, ; . : ! ?`, em dash, en dash, line break, `and` or `but`,
+  for a negation word. That fixes the classic false negative (`"These are not
+  guesses, they are independently verified."` is flagged), but the cut is
+  punctuation and two conjunctions, not grammar. It fails in both directions.
+
+  False negatives (a real overclaim is NOT reported; this is the direction that
+  matters for a lint). A negation word in the same clause still suppresses a
+  phrase it does not govern. On a `modeled` claim each of these is missed:
+  - `"Don't miss our independently verified rates."` and `"You can't beat our
+    proprietary dataset."` (the negation belongs to a verb such as "miss" or
+    "beat", not to the phrase);
+  - `"Never overpay with our guaranteed lowest price."`, `"No signup needed for
+    our proprietary dataset"`, `"No hidden fees guaranteed"` and `"There is no
+    better proprietary database"` (a negation word with the phrase further on
+    in the same clause);
+  - `"Not estimated (verified)"`.
+
+  These four used to be missed too and are now reported: `"No fees and
+  guaranteed returns."` and `"It is not a guess but a verified dataset."` (`and`
+  and `but` end a negation), `"Nothing but independently verified sources."` and
+  `"Without question independently verified."` (idioms that assert what follows).
+  `"No doubt"`, `"no question"`, `"no wonder"`, `"no one"`, `"not only"`, `"not
+  just"`, `"not merely"` and `"not simply"` are special-cased the same way. The
+  idiom list is short and is not an exhaustive list of English.
+
+  False positives (noise: something negated is reported):
   - a comma or period inside a number counts as a boundary, so `"We do not
     have 1,000 fact-checked records"` is flagged;
   - a negation that governs a list is cut at the first comma, so `"We do not
     use guaranteed, verified, or proprietary datasets"` is flagged for the
     later items;
+  - the same happens at `and`: `"We do not use guaranteed and verified
+    datasets."` is flagged for "verified dataset". `or` and `nor` are not
+    boundaries, so `"not guaranteed or independently verified"` is clean;
   - a claim hard-wrapped across lines (`"not\nverified"`) is cut at the line
     break; keep each claim on one line or unwrap it first.
 
-  These are false positives (noise). Narrowing `negationWindow` shrinks how far
-  back a negation reaches inside a clause; `0` turns negation handling off. A
-  handful of idioms that contain a negation word without negating anything
-  ("no doubt," "not only," "no one," …) are special-cased so they don't
-  suppress a real offense, but this is not an exhaustive list of English idiom.
+  Narrowing `negationWindow` shrinks how far back a negation reaches inside a
+  clause; `0` turns negation handling off, which reports every match and removes
+  the false negatives above at the cost of flagging real negations. Review the
+  negated phrases the scanner stays silent on if the wording matters to you.
 - **The phrase-boundary rule is asymmetric on purpose.** A match must start
   on a word boundary (so "unverified dataset" does not match the phrase
   "verified dataset"), but the END of a match is never boundary-checked,
@@ -375,7 +401,8 @@ entitled to, not as a substitute for that decision.
   why. `validateClaims` always returns the full list.
 - **Negation-aware, within a clause.** "Not a proprietary dataset" is not the
   same claim as "proprietary dataset," and the scanner treats them differently;
-  a negation in an earlier clause does not carry over.
+  a negation in an earlier clause, or before an `and` or `but`, does not carry
+  over.
 - **Shared defaults are frozen.** `PROVENANCE_TIERS` and
   `DEFAULT_CERTAINTY_PHRASES` are module-level singletons, `Object.freeze`d
   (including each phrase entry) so one caller mutating them in place can't

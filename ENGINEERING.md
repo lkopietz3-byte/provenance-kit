@@ -19,8 +19,9 @@
   fields (`claimId`, `claimText`, `phrase`) and the verbatim definition text
   the helpers return are not escaped.
 - A negation only suppresses a certainty phrase within its own clause: a
-  boundary (`, ; . : ! ?`, an em or en dash, or a line break) between the two
-  ends it.
+  boundary (`, ; . : ! ?`, an em or en dash, or a line break) or the word `and`
+  or `but` between the two ends it. This still misses overclaims a same-clause
+  negation does not govern ("Don't miss our independently verified rates.").
 - `PROVENANCE_TIERS` and `DEFAULT_CERTAINTY_PHRASES` are frozen
   (`Object.freeze`, including each phrase entry). Extend them by
   spreading into a new array, never by mutating in place.
@@ -60,8 +61,8 @@ installed package — not the local source tree.
 - **Not an exhaustive overclaiming vocabulary.** `DEFAULT_CERTAINTY_PHRASES`
   is a small generic starter list. Extend it per product.
 - **Negation is a character window cut at clause punctuation, not a grammar
-  parser.** See the README's Honest limits for the specific trade-offs this
-  implies (it errs toward reporting).
+  parser.** It errs in both directions: it reports some negated phrases and
+  misses some overclaims. See the README's Honest limits for examples of each.
 
 ## Are the types wrong? (attw)
 
