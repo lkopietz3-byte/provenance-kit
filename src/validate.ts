@@ -93,19 +93,42 @@ const NEGATION_WORDS =
 const NEGATION_IDIOM_EXCEPTIONS =
   /\b(no doubt|no question|no wonder|no one|not only|not just|not merely|not simply)\b/gi;
 
-/** True if `ch` is a letter or digit under the same definition INTRAWORD_HYPHEN uses. */
-function isWordChar(ch: string | undefined): boolean {
-  return ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/** True if the code point `cp` is a letter or digit, the definition INTRAWORD_HYPHEN uses. */
+function isWordCodePoint(cp: number | undefined): boolean {
+  return cp !== undefined && WORD_CHAR.test(String.fromCodePoint(cp));
+}
+
+/**
+ * The whole code point that ends just before UTF-16 index `index`, or
+ * undefined at the start of the string. Reading `text[index - 1]` returns half
+ * of a surrogate pair for a character outside the Basic Multilingual Plane, so
+ * a supplementary-plane letter would never look like a letter. A lone
+ * (unpaired) surrogate is returned as itself and is not a word character.
+ */
+function codePointBefore(text: string, index: number): number | undefined {
+  if (index <= 0) return undefined;
+  const unit = text.charCodeAt(index - 1);
+  if (unit >= 0xdc00 && unit <= 0xdfff && index >= 2) {
+    const lead = text.charCodeAt(index - 2);
+    if (lead >= 0xd800 && lead <= 0xdbff) return text.codePointAt(index - 2);
+  }
+  return unit;
 }
 
 function normalizePhrase(input: CertaintyPhraseInput): CertaintyPhraseRule {
   return typeof input === 'string' ? { phrase: input } : input;
 }
 
-// Characters that are invisible to a reader but break a plain substring
-// search: soft hyphen, zero-width space/joiners, bidi marks, word joiner,
-// and the byte-order mark.
-const INVISIBLE_CHARS = /[\u00ad\u200b-\u200f\u2060\ufeff]/g;
+// Characters a renderer draws as nothing but that break a plain substring
+// search: the Unicode Default_Ignorable_Code_Point property. It covers the
+// soft hyphen, zero-width space and joiners, every bidi control (marks,
+// embeddings, overrides and the isolates U+2066-2069, U+061C), the word
+// joiner, invisible math operators, variation selectors, Hangul fillers, the
+// byte-order mark and tag characters. A hand-written range list missed the
+// isolates and U+061C, so "independently\u2066 verified" evaded the scan.
+const INVISIBLE_CHARS = /\p{Default_Ignorable_Code_Point}/gu;
 // Typographic apostrophes, folded to ' so contractions are recognized.
 const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 // A hyphen (ASCII or U+2010..U+2012) between two letters/digits reads as a
@@ -154,27 +177,36 @@ function matchView(folded: string): string {
 }
 
 /**
- * Start index of every non-overlapping occurrence of `needle` in `haystack`
- * that starts on a word boundary when `needle` itself starts with a letter
- * or digit — so a phrase like "verified dataset" does not match inside
- * "UNverified dataset", and "100% accurate" does not match inside
- * "2100% accurate". A phrase starting with punctuation (e.g. "(verified)")
- * is unrestricted. The END of a match is never boundary-checked on purpose:
- * plural and inflected forms ("guarantees", "proprietary datasets") are
- * meant to match.
+ * Start index of every non-overlapping accepted occurrence of `needle` in
+ * `haystack`. A needle that starts with a letter or digit (judged on its first
+ * whole code point) is accepted only on a word boundary: the code point before
+ * it must not be a letter or digit, so a phrase like "verified dataset" does
+ * not match inside "UNverified dataset", or after a supplementary-plane letter,
+ * and "100% accurate" does not match inside "2100% accurate". A phrase starting
+ * with punctuation (e.g. "(verified)") is unrestricted. The END of a match is
+ * never boundary-checked on purpose: plural and inflected forms ("guarantees",
+ * "proprietary datasets") are meant to match.
+ *
+ * An empty needle matches nothing. The early return is load-bearing:
+ * `indexOf('', start)` returns `start`, so without it the scan below would
+ * never advance.
  */
 function findOccurrences(haystack: string, needle: string): number[] {
   if (!needle) return [];
-  const needsLeftBoundary = isWordChar(needle[0]);
+  const needsLeftBoundary = isWordCodePoint(needle.codePointAt(0));
   const indices: number[] = [];
   let start = 0;
   for (;;) {
     const idx = haystack.indexOf(needle, start);
     if (idx === -1) break;
-    if (!needsLeftBoundary || !isWordChar(haystack[idx - 1])) {
+    if (!needsLeftBoundary || !isWordCodePoint(codePointBefore(haystack, idx))) {
       indices.push(idx);
+      // Accepted matches do not overlap.
+      start = idx + needle.length;
+    } else {
+      // A rejected candidate must not hide a valid one that starts inside it.
+      start = idx + 1;
     }
-    start = idx + needle.length;
   }
   return indices;
 }
