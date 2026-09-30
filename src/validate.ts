@@ -37,15 +37,22 @@ export type ClaimOffenseReason =
 
 /** A single flagged problem with a claim. One claim can produce several. */
 export interface ClaimOffense {
-  /** id of the offending claim. */
+  /** id of the offending claim, exactly as given (not escaped). */
   claimId: string;
-  /** text of the offending claim, for context in a report. */
+  /** text of the offending claim, for context in a report, exactly as given (not escaped). */
   claimText: string;
-  /** The specific certainty phrase matched, or null for non-phrase offenses. */
+  /**
+   * The specific certainty phrase matched, as the caller wrote it (not the
+   * folded form and not escaped), or null for non-phrase offenses.
+   */
   phrase: string | null;
   /** Machine-checkable reason code. */
   reason: ClaimOffenseReason;
-  /** Human-readable explanation, suitable for a CI failure message. */
+  /**
+   * Human-readable explanation, suitable for a CI failure message. Safe to
+   * print: control characters, line breaks and bidi formatting characters that
+   * came from caller strings are shown as `\uXXXX` escapes.
+   */
   message: string;
   /**
    * The claim's tier as given. A recognized tier autocompletes as a
@@ -101,7 +108,11 @@ export interface ValidateClaimsOptions {
   negationWindow?: number;
 }
 
-/** Either a ready-made claim list, or raw text plus a domain-specific extractor. */
+/**
+ * Either a ready-made claim list, or raw text plus a domain-specific
+ * extractor. The list (or the extractor's return value) must be a dense
+ * array; `extractClaims` runs once and must return synchronously.
+ */
 export type ClaimsInput =
   | Claim[]
   | { text: string; extractClaims: (text: string) => Claim[] };
@@ -123,6 +134,7 @@ const NEGATION_IDIOM_EXCEPTIONS =
   /\b(no doubt|no question|no wonder|no one|not only|not just|not merely|not simply)\b/gi;
 
 const WORD_CHAR = /[\p{L}\p{N}]/u;
+const LEADING_WORD = /^[\p{L}\p{N}]+/u;
 
 /** True if the code point `cp` is a letter or digit, the definition INTRAWORD_HYPHEN uses. */
 function isWordCodePoint(cp: number | undefined): boolean {
@@ -248,6 +260,12 @@ function findOccurrences(haystack: string, needle: string): number[] {
 function isNegated(text: string, matchIndex: number, windowSize: number): boolean {
   const start = Math.max(0, matchIndex - windowSize);
   let preceding = text.slice(start, matchIndex);
+  // A window that starts inside a word would leave only the tail of it, and
+  // the tail of "casino" or "knot" reads as the negation "no" or "not". Drop
+  // that partial word: it did not fit in the window, like any other word.
+  if (isWordCodePoint(codePointBefore(text, start))) {
+    preceding = preceding.replace(LEADING_WORD, '');
+  }
   for (let i = preceding.length - 1; i >= 0; i--) {
     if (CLAUSE_BOUNDARY.test(preceding[i] as string)) {
       preceding = preceding.slice(i + 1);

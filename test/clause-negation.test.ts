@@ -160,3 +160,42 @@ describe('idioms still do not negate, inside the clause', () => {
     expect(flaggedPhrases('Not only is it not a proprietary dataset.')).toEqual([]);
   });
 });
+
+describe('a window that starts inside a word does not read the tail of that word', () => {
+  // Found by fuzzing: slicing the window at a fixed offset can leave "no" (the
+  // end of "casino") or "not" (the end of "knot") at the start of the slice,
+  // where `\bno\b` matches it as a negation. That hides an overclaim.
+  const phrase = 'proprietary dataset';
+
+  it.each([
+    ['casino', 'no'],
+    ['piano', 'no'],
+    ['knot', 'not'],
+    ['carnot', 'not'],
+  ])('ignores the "%s" tail "%s" when the window starts inside the word', (word, tail) => {
+    const before = `${word} x `;
+    const text = `${before}${phrase}`;
+    const window = before.length - (word.length - tail.length);
+    expect(flaggedPhrases(text, { negationWindow: window })).toEqual(['proprietary dataset']);
+  });
+
+  it('still negates when the window holds the whole word', () => {
+    expect(flaggedPhrases('not x proprietary dataset', { negationWindow: 6 })).toEqual([]);
+    expect(flaggedPhrases('cannot x proprietary dataset', { negationWindow: 9 })).toEqual([]);
+  });
+
+  it('drops a cut "cannot" the same way as any other word that does not fit', () => {
+    expect(flaggedPhrases('cannot x proprietary dataset', { negationWindow: 6 })).toEqual(['proprietary dataset']);
+  });
+
+  it('a window that starts exactly at a word start, or after a non-letter, is unaffected', () => {
+    expect(flaggedPhrases('x not x proprietary dataset', { negationWindow: 6 })).toEqual([]);
+    expect(flaggedPhrases('x-not x proprietary dataset', { negationWindow: 6 })).toEqual([]);
+    expect(flaggedPhrases('7not x proprietary dataset', { negationWindow: 6 })).toEqual(['proprietary dataset']);
+  });
+
+  it('works for a word that starts with a supplementary-plane letter', () => {
+    const text = '\u{10400}not x proprietary dataset';
+    expect(flaggedPhrases(text, { negationWindow: 6 })).toEqual(['proprietary dataset']);
+  });
+});
