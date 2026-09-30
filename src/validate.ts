@@ -100,8 +100,11 @@ export interface ValidateClaimsOptions {
   /**
    * How many characters before a phrase match to scan for a negation word,
    * counted in the folded text. The scan also stops at the nearest clause
-   * boundary (`, ; . : ! ?`, an em or en dash, or a line break), so a
-   * negation in an earlier clause never suppresses a later phrase. Default 40.
+   * boundary (`, ; . : ! ?`, an em or en dash, or a line break) and at the
+   * words `and` and `but`, so a negation in an earlier clause or conjunct
+   * never suppresses a later phrase. A negation still hides a phrase it does
+   * not govern in the same clause (`"Don't miss our independently verified
+   * rates."`), so `0` (negation off) is the strictest setting. Default 40.
    * Must be an integer >= 0 or `Infinity` (whole clause); `0` turns negation
    * handling off.
    */
@@ -127,11 +130,23 @@ const NEGATION_WORDS =
   /\b(not|never|no|none|nothing|nor|neither|without|hardly|barely|far from|isn't|is not|wasn't|was not|aren't|are not|weren't|were not|doesn't|does not|don't|do not|didn't|did not|can't|cannot|can not|couldn't|could not|won't|will not|wouldn't|would not|shouldn't|should not|hasn't|has not|haven't|have not|hadn't|had not)\b/i;
 
 // Idioms that contain a negation word but do not negate what follows —
-// "no doubt X" and "not only X" both assert X. Stripped out of the window
+// "no doubt X", "not only X", "without question X" and "nothing but X" all
+// assert X. (`but` also ends a negation's scope, see SCOPE_ENDING_WORD, so
+// "nothing but" is reported either way; it is listed so the idiom stays
+// correct if that rule changes.) Stripped out of the window
 // before the negation check runs, so they don't wrongly suppress a real
 // certainty-phrase offense (a false negative in the dangerous direction).
 const NEGATION_IDIOM_EXCEPTIONS =
-  /\b(no doubt|no question|no wonder|no one|not only|not just|not merely|not simply)\b/gi;
+  /\b(no doubt|no question|no wonder|no one|nothing but|without question|not only|not just|not merely|not simply)\b/gi;
+
+// `and` and `but` end a negation's scope, like a clause boundary does. "No fees
+// and guaranteed returns" and "not a guess but a verified dataset" each negate
+// only the part before the conjunction, so a phrase after it is reported. The
+// price is noise on a negated coordinated list ("we do not use guaranteed and
+// verified datasets" reports the second item); `or` and `nor` are left alone
+// because "not A or B" negates both. Whole words only, judged on letters and
+// digits of any script, so "band" and "butterfly" are not conjunctions.
+const SCOPE_ENDING_WORD = /(?<![\p{L}\p{N}_])(?:and|but)(?![\p{L}\p{N}_])/gu;
 
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 const LEADING_WORD = /^[\p{L}\p{N}]+/u;
@@ -171,6 +186,12 @@ const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 // A hyphen (ASCII or U+2010..U+2012) between two letters/digits reads as a
 // space for matching: "fact-checked" and "fact checked" are the same phrase.
 const INTRAWORD_HYPHEN = /(?<=[\p{L}\p{N}])[-\u2010-\u2012](?=[\p{L}\p{N}])/gu;
+// An en dash directly between two letters/digits also reads as a space for
+// MATCHING ("fact\u2013checked" is "fact-checked" to a reader). It is not folded
+// in the text the negation check sees, because an unspaced en dash is also a
+// clause boundary there ("not guesses\u2013proprietary dataset"); `matchView`
+// applies it.
+const INTRAWORD_EN_DASH = /(?<=[\p{L}\p{N}])\u2013(?=[\p{L}\p{N}])/gu;
 // Any run of whitespace (JS `\s` plus U+0085, which `\s` omits) collapses to
 // one character. A run that contains a line break becomes '\n' instead of ' ',
 // so the negation check can still see where a line ended (see `foldText`).
@@ -208,9 +229,12 @@ function foldText(text: string, caseSensitive: boolean): string {
   return caseSensitive ? folded : folded.toLowerCase();
 }
 
-/** The folded text as matching sees it: line breaks read as spaces, same length. */
+/**
+ * The folded text as matching sees it: line breaks and an en dash between two
+ * letters or digits read as spaces, same length.
+ */
 function matchView(folded: string): string {
-  return folded.replaceAll('\n', ' ');
+  return folded.replaceAll('\n', ' ').replace(INTRAWORD_EN_DASH, ' ');
 }
 
 /**
@@ -272,6 +296,10 @@ function isNegated(text: string, matchIndex: number, windowSize: number): boolea
       break;
     }
   }
+  // The last `and` / `but` ends the scope: only what follows it can negate.
+  let scopeStart = 0;
+  for (const word of preceding.matchAll(SCOPE_ENDING_WORD)) scopeStart = word.index + word[0].length;
+  preceding = preceding.slice(scopeStart);
   return NEGATION_WORDS.test(preceding.replace(NEGATION_IDIOM_EXCEPTIONS, ' '));
 }
 
@@ -464,12 +492,14 @@ function readClaims(input: unknown): ClaimSnapshot[] {
  *
  * Text rules:
  * - Matching folds Unicode compatibility forms, invisible formatting
- *   characters, hyphenation, spacing (a line break reads as a space) and, unless
- *   `caseSensitive`, case.
+ *   characters, hyphenation (an ASCII hyphen, U+2010 to U+2012 or an en dash
+ *   between two letters or digits), spacing (a line break reads as a space)
+ *   and, unless `caseSensitive`, case.
  * - A phrase that starts with a letter or digit must start on a word boundary,
  *   judged on whole code points. The end of a match is never boundary-checked.
- * - A negation word suppresses a phrase only inside the same clause and within
- *   `negationWindow`.
+ * - A negation word suppresses a phrase only inside the same clause, after the
+ *   last `and` or `but`, and within `negationWindow`. It is a window, not a
+ *   parser: it can still suppress an overclaim the negation does not govern.
  * - `message` text is safe to print: control characters, line breaks and bidi
  *   formatting characters that came from caller strings are shown as `\uXXXX`
  *   escapes. `claimId`, `claimText` and `phrase` are structured data and are

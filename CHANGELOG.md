@@ -17,10 +17,26 @@ exports and the shape of `ClaimOffense` are unchanged.
   reaches a phrase only when no clause boundary (`, ; . : ! ?`, an em or en
   dash, or a line break) sits between them, still inside `negationWindow`.
   `"This is not verified."` and `"We don't claim it is verified"` are still
-  suppressed. The rule errs toward reporting; see the README's Honest limits
-  for the noisy cases (commas inside numbers, a negated list, hard-wrapped
-  claims). A line break still reads as a space for matching, so a phrase
-  wrapped across lines is still found.
+  suppressed. The rule is not a parser and fails both ways; see the README's
+  Honest limits for the noisy cases (commas inside numbers, a negated list,
+  hard-wrapped claims) and for the overclaims it still misses (a negation that
+  belongs to another word in the same clause, such as `"Don't miss our
+  independently verified rates."`). A line break still reads as a space for
+  matching, so a phrase wrapped across lines is still found.
+- **`and` and `but` also end a negation; `nothing but` and `without question`
+  do not negate.** A negation used to hide a real phrase in another coordinated
+  part of the same clause. `"No fees and guaranteed returns."`, `"It is not a
+  guess but a verified dataset."`, `"Nothing but independently verified
+  sources."` and `"Without question independently verified."` are now
+  reported on a `modeled` claim. Cost: a negation over a coordinated list is cut
+  at `and` (`"We do not use guaranteed and verified datasets."` reports
+  "verified dataset"); `or` and `nor` are not boundaries. The README's Honest
+  limits names the overclaims that are still missed.
+- **An en dash between two letters reads like a hyphen.** `"fact\u2013checked"`
+  and `"independently\u2013verified"` now match `fact-checked` and
+  `independently verified`; before, only ASCII hyphens and U+2010 to U+2012 did.
+  An en dash with a space or punctuation next to it is unchanged, and an
+  unspaced en dash still ends a negation.
 - **Word boundaries use whole code points (PVK-F-002).** The left boundary
   looked at one UTF-16 code unit, so a letter or digit outside the Basic
   Multilingual Plane never counted, and `"\u{10400}verified dataset"` matched.

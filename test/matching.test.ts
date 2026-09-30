@@ -33,9 +33,50 @@ describe('phrase matching ignores spacing and hyphenation', () => {
     expect(flaggedPhrases('We reverse engineered the pricing.')).toEqual(['reverse-engineered']);
   });
 
-  it('does not treat a hyphen as equal to a different letter or an en dash', () => {
-    expect(flaggedPhrases('This is independently–verified data.')).toEqual([]);
+  it('does not treat a hyphen as equal to a different letter', () => {
     expect(flaggedPhrases('This is independentlyXverified data.')).toEqual([]);
+  });
+});
+
+describe('an en dash between two letters reads like a hyphen', () => {
+  // Review finding: "fact\u2013checked" is the same word a reader sees as
+  // "fact-checked". Only an en dash directly between two letters or digits is
+  // folded; an en dash is still a clause boundary for negation (see
+  // clause-negation.test.ts), so the fold applies to matching only.
+  it.each([
+    ['independently\u2013verified', 'This is independently\u2013verified data.', ['independently verified']],
+    ['fact\u2013checked', 'Every number here is fact\u2013checked.', ['fact-checked']],
+    ['reverse\u2013engineered', 'We reverse\u2013engineered the pricing.', ['reverse-engineered']],
+    ['a capitalized, upper-case en dash phrase', 'FACT\u2013CHECKED by us.', ['fact-checked']],
+  ])('flags %s', (_label, text, expected) => {
+    expect(flaggedPhrases(text)).toEqual(expected);
+  });
+
+  it('does not fold an en dash that has a space or punctuation next to it', () => {
+    expect(flaggedPhrases('This is independently \u2013 verified data.')).toEqual([]);
+    expect(flaggedPhrases('This is independently\u2013 verified data.')).toEqual([]);
+    expect(flaggedPhrases('This is independently \u2013verified data.')).toEqual([]);
+    expect(flaggedPhrases('This is independently.\u2013verified data.')).toEqual([]);
+  });
+
+  it('matches a custom phrase that is written with an en dash', () => {
+    const options = { certaintyPhrases: ['fact\u2013checked'] };
+    expect(flaggedPhrases('It is fact\u2013checked.', options)).toEqual(['fact\u2013checked']);
+    expect(flaggedPhrases('It is fact-checked.', options)).toEqual(['fact\u2013checked']);
+    expect(flaggedPhrases('It is fact checked.', options)).toEqual(['fact\u2013checked']);
+  });
+
+  it('still lets a real negation in front of the phrase suppress it', () => {
+    expect(flaggedPhrases('We are not fact\u2013checked.')).toEqual([]);
+    expect(flaggedPhrases('This is not independently\u2013verified.')).toEqual([]);
+  });
+
+  it('still ends a negation at an en dash that sits before the phrase', () => {
+    expect(flaggedPhrases('not guesses\u2013fact\u2013checked')).toEqual(['fact-checked']);
+  });
+
+  it('keeps the word boundary: a letter before the phrase still blocks a match', () => {
+    expect(flaggedPhrases('unfact\u2013checked')).toEqual([]);
   });
 });
 
