@@ -21,6 +21,11 @@ exports and the shape of `ClaimOffense` are unchanged.
   for the noisy cases (commas inside numbers, a negated list, hard-wrapped
   claims). A line break still reads as a space for matching, so a phrase
   wrapped across lines is still found.
+- **An en dash between two letters reads like a hyphen.** `"fact\u2013checked"`
+  and `"independently\u2013verified"` now match `fact-checked` and
+  `independently verified`; before, only ASCII hyphens and U+2010 to U+2012 did.
+  An en dash with a space or punctuation next to it is unchanged, and an
+  unspaced en dash still ends a negation.
 - **Word boundaries use whole code points (PVK-F-002).** The left boundary
   looked at one UTF-16 code unit, so a letter or digit outside the Basic
   Multilingual Plane never counted, and `"\u{10400}verified dataset"` matched.

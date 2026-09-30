@@ -171,6 +171,12 @@ const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 // A hyphen (ASCII or U+2010..U+2012) between two letters/digits reads as a
 // space for matching: "fact-checked" and "fact checked" are the same phrase.
 const INTRAWORD_HYPHEN = /(?<=[\p{L}\p{N}])[-\u2010-\u2012](?=[\p{L}\p{N}])/gu;
+// An en dash directly between two letters/digits also reads as a space for
+// MATCHING ("fact\u2013checked" is "fact-checked" to a reader). It is not folded
+// in the text the negation check sees, because an unspaced en dash is also a
+// clause boundary there ("not guesses\u2013proprietary dataset"); `matchView`
+// applies it.
+const INTRAWORD_EN_DASH = /(?<=[\p{L}\p{N}])\u2013(?=[\p{L}\p{N}])/gu;
 // Any run of whitespace (JS `\s` plus U+0085, which `\s` omits) collapses to
 // one character. A run that contains a line break becomes '\n' instead of ' ',
 // so the negation check can still see where a line ended (see `foldText`).
@@ -208,9 +214,12 @@ function foldText(text: string, caseSensitive: boolean): string {
   return caseSensitive ? folded : folded.toLowerCase();
 }
 
-/** The folded text as matching sees it: line breaks read as spaces, same length. */
+/**
+ * The folded text as matching sees it: line breaks and an en dash between two
+ * letters or digits read as spaces, same length.
+ */
 function matchView(folded: string): string {
-  return folded.replaceAll('\n', ' ');
+  return folded.replaceAll('\n', ' ').replace(INTRAWORD_EN_DASH, ' ');
 }
 
 /**
@@ -464,8 +473,9 @@ function readClaims(input: unknown): ClaimSnapshot[] {
  *
  * Text rules:
  * - Matching folds Unicode compatibility forms, invisible formatting
- *   characters, hyphenation, spacing (a line break reads as a space) and, unless
- *   `caseSensitive`, case.
+ *   characters, hyphenation (an ASCII hyphen, U+2010 to U+2012 or an en dash
+ *   between two letters or digits), spacing (a line break reads as a space)
+ *   and, unless `caseSensitive`, case.
  * - A phrase that starts with a letter or digit must start on a word boundary,
  *   judged on whole code points. The end of a match is never boundary-checked.
  * - A negation word suppresses a phrase only inside the same clause and within
