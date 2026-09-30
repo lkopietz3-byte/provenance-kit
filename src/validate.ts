@@ -15,6 +15,7 @@
 
 import type { Claim, ProvenanceTier } from './types.js';
 import { PROVENANCE_TIERS } from './types.js';
+import { readDenseArray } from './args.js';
 import { DEFAULT_CERTAINTY_PHRASES, type CertaintyPhraseInput } from './certainty-phrases.js';
 import {
   describeType,
@@ -24,7 +25,8 @@ import {
   isVisiblyBlank,
 } from './text.js';
 
-const PREFIX = 'validateClaims: ';
+const FN = 'validateClaims';
+const PREFIX = `${FN}: `;
 
 /** Why a given offense was raised. */
 export type ClaimOffenseReason =
@@ -275,31 +277,12 @@ function isTier(value: unknown): value is ProvenanceTier {
   return typeof value === 'string' && (PROVENANCE_TIERS as readonly string[]).includes(value);
 }
 
-/**
- * Copy a list once through an indexed traversal that rejects holes. A
- * `.map` or `.forEach` would skip a hole while `for...of` visits it as
- * `undefined`, so a sparse array validated one way and processed the other way
- * crashes. `Object.hasOwn` (not `in`) keeps an inherited `Array.prototype`
- * entry from filling a hole.
- */
-function readDenseArray(list: unknown[], name: string): unknown[] {
-  const length = list.length;
-  const copy: unknown[] = [];
-  for (let i = 0; i < length; i++) {
-    if (!Object.hasOwn(list, i)) {
-      throw new TypeError(`${PREFIX}${name}[${i}] is missing (a hole in a sparse array).`);
-    }
-    copy.push(list[i]);
-  }
-  return copy;
-}
-
 function readTierList(value: unknown, name: string, fallback: readonly ProvenanceTier[]): readonly ProvenanceTier[] {
   if (value === undefined) return fallback;
   if (!Array.isArray(value)) {
     throw new TypeError(`${PREFIX}options.${name} must be an array (received ${describeType(value)}).`);
   }
-  const tiers = readDenseArray(value, `options.${name}`);
+  const tiers = readDenseArray(value, `options.${name}`, FN);
   tiers.forEach((tier, i) => {
     if (typeof tier !== 'string') {
       throw new TypeError(
@@ -321,7 +304,7 @@ function readPhrases(value: unknown, caseSensitive: boolean): ScanOptions['phras
   if (!Array.isArray(input)) {
     throw new TypeError(`${PREFIX}options.certaintyPhrases must be an array (received ${describeType(input)}).`);
   }
-  return readDenseArray(input, 'options.certaintyPhrases').map((entry, i) => {
+  return readDenseArray(input, 'options.certaintyPhrases', FN).map((entry, i) => {
     const name = `options.certaintyPhrases[${i}]`;
     let phrase: unknown = entry;
     let reason: unknown;
@@ -433,7 +416,7 @@ function readClaims(input: unknown): ClaimSnapshot[] {
       );
     }
   }
-  return readDenseArray(claims as unknown[], 'claims').map(readClaim);
+  return readDenseArray(claims as unknown[], 'claims', FN).map(readClaim);
 }
 
 /**

@@ -12,7 +12,12 @@
 
 import type { ProvenanceTier, ProvenanceTierDefinitions } from './types.js';
 import { PROVENANCE_TIERS } from './types.js';
+import { assertDefinitions, optionalString, readDefinition, readDenseArray, readOptionsObject } from './args.js';
+import { describeType, escapeForDisplay } from './text.js';
 
+const FN = 'methodologyPageOutline';
+
+/** Options for `methodologyPageOutline`. Every field is optional; `undefined` means the default. */
 export interface MethodologyPageOutlineOptions {
   /** Page title. Default: "How we know what we publish". */
   title?: string;
@@ -22,6 +27,20 @@ export interface MethodologyPageOutlineOptions {
   tiers?: ProvenanceTier[];
   /** Product name to reference in the placeholder sections. Default: "This product". */
   productName?: string;
+}
+
+/** `options.tiers`: `undefined` means all three tiers; otherwise a dense array of strings, copied once. */
+function readTiers(value: unknown): string[] {
+  if (value === undefined) return [...PROVENANCE_TIERS];
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${FN}: options.tiers must be an array (received ${describeType(value)}).`);
+  }
+  return readDenseArray(value, 'options.tiers', FN).map((tier, i) => {
+    if (typeof tier !== 'string') {
+      throw new TypeError(`${FN}: options.tiers[${i}] must be a string (received ${describeType(tier)}).`);
+    }
+    return tier;
+  });
 }
 
 const DEFAULT_INTRO =
@@ -39,8 +58,26 @@ const DEFAULT_INTRO =
  * for the caller to fill in; this function only auto-fills what it can
  * honestly know from the tier definitions themselves.
  *
- * Security: `label` and `criteria` from each tier definition are copied
- * into the output **verbatim** — no Markdown escaping, no HTML escaping.
+ * What it checks, and how it fails:
+ * - `definitions` must be a plain object, and `options` a plain object or
+ *   `undefined` (`TypeError`; a `Map` or `null` used to read as "no
+ *   definitions" or crash deep inside).
+ * - `title`, `intro` and `productName` must be strings when given, and `tiers`
+ *   a dense array of strings (`TypeError`; a bare string used to be iterated one
+ *   character at a time).
+ * - A tier with no OWN entry in `definitions` (including an inherited key such as
+ *   "constructor", or an entry that is `undefined` or `null`) becomes a `TODO`
+ *   line, not an error. A definition that is present but not an object, or whose
+ *   `label` or `criteria` is not a string, throws `TypeError`; a visibly blank
+ *   `label` throws `RangeError`.
+ * - The tier name shown in a `TODO` line or fallback heading has control and
+ *   bidi characters escaped, so a tier name cannot forge a heading or line.
+ * - Everything is read once per call.
+ *
+ * Security: `label` and `criteria` from each tier definition, and `title`,
+ * `intro` and `productName`, are copied into the output **verbatim** — no
+ * Markdown escaping, no HTML escaping, no control-character escaping
+ * (`criteria` may legitimately span several lines).
  * This is Markdown text, not HTML, so it is not directly injectable by
  * itself; but if you (or a later step in your pipeline) render this
  * Markdown to HTML with a renderer that passes through raw HTML (several
@@ -54,12 +91,12 @@ export function methodologyPageOutline(
   definitions: ProvenanceTierDefinitions,
   options: MethodologyPageOutlineOptions = {},
 ): string {
-  const {
-    title = 'How we know what we publish',
-    intro = DEFAULT_INTRO,
-    tiers = [...PROVENANCE_TIERS],
-    productName = 'This product',
-  } = options;
+  assertDefinitions(definitions, FN);
+  const raw = readOptionsObject(options, FN);
+  const title = optionalString(raw.title, 'title', FN) ?? 'How we know what we publish';
+  const intro = optionalString(raw.intro, 'intro', FN) ?? DEFAULT_INTRO;
+  const productName = optionalString(raw.productName, 'productName', FN) ?? 'This product';
+  const tiers = readTiers(raw.tiers);
 
   const lines: string[] = [];
 
@@ -67,20 +104,22 @@ export function methodologyPageOutline(
 
   lines.push('## The tiers', '');
   for (const tier of tiers) {
-    // See badge.ts: Object.hasOwn guards against a `tier` value that
-    // collides with an inherited Object.prototype key (e.g. "constructor").
-    const def = Object.hasOwn(definitions, tier) ? definitions[tier] : undefined;
-    if (!def) {
+    // See badge.ts: readDefinition uses Object.hasOwn, which guards against a
+    // `tier` value that collides with an inherited Object.prototype key
+    // (e.g. "constructor").
+    const def = readDefinition(definitions, tier, ['criteria'], FN);
+    if (def === undefined) {
+      const shown = escapeForDisplay(tier);
       lines.push(
-        `### ${tier}`,
+        `### ${shown}`,
         '',
-        `TODO: no ProvenanceTierDefinition was supplied for "${tier}". ` +
+        `TODO: no ProvenanceTierDefinition was supplied for "${shown}". ` +
           `Add one so this section can be filled in automatically.`,
         '',
       );
       continue;
     }
-    lines.push(`### ${def.label}`, '', def.criteria, '');
+    lines.push(`### ${def.label}`, '', def.criteria as string, '');
   }
 
   lines.push(
