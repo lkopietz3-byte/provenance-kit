@@ -1,6 +1,6 @@
 # provenance-kit — agent instructions
 
-Make "how confident are we in this claim" a structured, enforced, machine-checkable data field instead of an implicit copywriting choice.
+Label public claims verified, modeled or editorial, then check that their wording is not stronger than the label allows. A wording lint, not a fact-checker.
 
 ## Read first
 - `ENGINEERING.md` holds this package's invariants and design rules; read it before changing behavior.
