@@ -7,7 +7,7 @@
 // failure this library exists to prevent.
 
 import type { ProvenanceTierDefinitions } from './types.js';
-import { describeType, escapeForDisplay, isPlainObject, isVisiblyBlank } from './text.js';
+import { describeType, escapeForDisplay, isArray, isPlainObject, isVisiblyBlank } from './text.js';
 
 /** The definition fields the calling helper reads, after they have been checked. */
 export type ReadDefinition = { label: string; shortDescription?: string; criteria?: string };
@@ -42,9 +42,12 @@ export function assertDefinitions(
   }
 }
 
-/** `options` must be `undefined` or a plain object; returns it (or `{}`) for reading. */
+/**
+ * `options` must be a plain object. The public functions default an omitted
+ * (or explicitly `undefined`) argument to `{}` before this runs, so `null`,
+ * a Map, an array and a class instance all fail here.
+ */
 export function readOptionsObject(value: unknown, fn: string): Record<string, unknown> {
-  if (value === undefined) return {};
   if (!isPlainObject(value)) {
     throw new TypeError(`${fn}: options must be a plain object or undefined (received ${describeType(value)}).`);
   }
@@ -78,7 +81,7 @@ export function readDefinition(
   const def: unknown = (definitions as Record<string, unknown>)[tier];
   if (def === undefined || def === null) return undefined;
   const name = `definitions["${escapeForDisplay(tier)}"]`;
-  if (typeof def !== 'object' || Array.isArray(def)) {
+  if (typeof def !== 'object' || isArray(def)) {
     throw new TypeError(`${fn}: ${name} must be an object (received ${describeType(def)}).`);
   }
   const record = def as Record<string, unknown>;

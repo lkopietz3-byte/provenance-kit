@@ -21,6 +21,7 @@ import {
   describeType,
   displayValue,
   escapeForDisplay,
+  isArray,
   isPlainObject,
   isVisiblyBlank,
 } from './text.js';
@@ -279,7 +280,7 @@ function isTier(value: unknown): value is ProvenanceTier {
 
 function readTierList(value: unknown, name: string, fallback: readonly ProvenanceTier[]): readonly ProvenanceTier[] {
   if (value === undefined) return fallback;
-  if (!Array.isArray(value)) {
+  if (!isArray(value)) {
     throw new TypeError(`${PREFIX}options.${name} must be an array (received ${describeType(value)}).`);
   }
   const tiers = readDenseArray(value, `options.${name}`, FN);
@@ -301,7 +302,7 @@ function readTierList(value: unknown, name: string, fallback: readonly Provenanc
 
 function readPhrases(value: unknown, caseSensitive: boolean): ScanOptions['phrases'] {
   const input = value === undefined ? DEFAULT_CERTAINTY_PHRASES : value;
-  if (!Array.isArray(input)) {
+  if (!isArray(input)) {
     throw new TypeError(`${PREFIX}options.certaintyPhrases must be an array (received ${describeType(input)}).`);
   }
   return readDenseArray(input, 'options.certaintyPhrases', FN).map((entry, i) => {
@@ -309,7 +310,7 @@ function readPhrases(value: unknown, caseSensitive: boolean): ScanOptions['phras
     let phrase: unknown = entry;
     let reason: unknown;
     if (typeof entry !== 'string') {
-      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      if (typeof entry !== 'object' || entry === null || isArray(entry)) {
         throw new TypeError(`${PREFIX}${name} must be a string or { phrase, reason } (received ${describeType(entry)}).`);
       }
       const rule = entry as { phrase?: unknown; reason?: unknown };
@@ -332,10 +333,10 @@ function readPhrases(value: unknown, caseSensitive: boolean): ScanOptions['phras
 
 /** Read every option once and validate it. Nothing here touches a claim. */
 function readOptions(options: unknown): ScanOptions {
-  if (options !== undefined && !isPlainObject(options)) {
+  if (!isPlainObject(options)) {
     throw new TypeError(`${PREFIX}options must be a plain object or undefined (received ${describeType(options)}).`);
   }
-  const raw = options ?? {};
+  const raw = options;
   const certaintyPhrases = raw.certaintyPhrases;
   const certaintyRequiresTier = raw.certaintyRequiresTier;
   const requireSourceRefForTiers = raw.requireSourceRefForTiers;
@@ -367,7 +368,7 @@ function readOptions(options: unknown): ScanOptions {
 /** Copy one claim once and check the shape of the fields the scan uses. */
 function readClaim(entry: unknown, index: number): ClaimSnapshot {
   const name = `${PREFIX}claims[${index}]`;
-  if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+  if (typeof entry !== 'object' || entry === null || isArray(entry)) {
     throw new TypeError(`${name} must be an object (received ${describeType(entry)}).`);
   }
   const record = entry as Record<string, unknown>;
@@ -395,7 +396,7 @@ function readClaims(input: unknown): ClaimSnapshot[] {
     );
   }
   let claims: unknown;
-  if (Array.isArray(input)) {
+  if (isArray(input)) {
     claims = input;
   } else {
     const source = input as { text?: unknown; extractClaims?: unknown };
@@ -408,7 +409,7 @@ function readClaims(input: unknown): ClaimSnapshot[] {
       throw new TypeError(`${PREFIX}text must be a string (received ${describeType(text)}).`);
     }
     claims = (extractClaims as (text: string) => unknown).call(input, text);
-    if (!Array.isArray(claims)) {
+    if (!isArray(claims)) {
       throw new TypeError(
         `${PREFIX}extractClaims(text) must return an array of Claim, got ` +
           `${claims instanceof Promise ? 'a promise (async extractors are not supported)' : describeType(claims)}. ` +
@@ -478,7 +479,9 @@ export function validateClaims(
     for (const { phrase, reason, folded } of config.phrases) {
       for (const idx of findOccurrences(searchText, folded)) {
         if (isNegated(foldedText, idx, negationWindow)) continue;
-        if (validTier !== undefined && certaintyRequiresTier.includes(validTier)) continue;
+        // `certaintyRequiresTier` holds only valid tier strings, so a claim tier
+        // that is not a string in that list (a String object, an array, ...) is never "backed".
+        if ((certaintyRequiresTier as readonly unknown[]).includes(tier)) continue;
 
         offenses.push({
           claimId: claim.id,

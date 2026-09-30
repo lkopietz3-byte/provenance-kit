@@ -47,6 +47,17 @@ describe('the left boundary reads the whole code point before the match', () => 
     expect(flaggedPhrases(' verified dataset')).toEqual(['verified dataset']);
   });
 
+  it('reads a pair whose high surrogate is the lowest one (U+10000, Linear B)', () => {
+    expect(flaggedPhrases('\u{10000}verified dataset')).toEqual([]);
+  });
+
+  it('does not pair a lone high surrogate with a character that follows it', () => {
+    // "x" is a letter, so the phrase after it is not on a boundary. The lone
+    // surrogate before "x" must not be read as "the character before the match".
+    expect(flaggedPhrases('\ud83dxverified dataset')).toEqual([]);
+    expect(flaggedPhrases('\ud83d verified dataset')).toEqual(['verified dataset']);
+  });
+
   it('treats a lone (unpaired) surrogate as a non-word character', () => {
     expect(flaggedPhrases('\ud800verified dataset')).toEqual(['verified dataset']);
     expect(flaggedPhrases('\udc00verified dataset')).toEqual(['verified dataset']);

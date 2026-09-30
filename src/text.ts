@@ -44,6 +44,15 @@ export function escapeForDisplay(text: string): string {
   );
 }
 
+/** `Array.isArray` that answers `false` instead of throwing on a revoked proxy. */
+export function isArray(value: unknown): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Name a received value's TYPE for an error message: "received string",
  * "received an array", "received null". It never calls into the value (no
@@ -55,11 +64,7 @@ export function describeType(value: unknown): string {
   if (typeof value === 'number') return String(value);
   if (value === null) return 'null';
   if (typeof value !== 'object') return typeof value;
-  try {
-    if (Array.isArray(value)) return 'an array';
-  } catch {
-    return 'an object'; // a revoked proxy makes Array.isArray throw
-  }
+  if (isArray(value)) return 'an array';
   return isPlainObject(value) ? 'an object' : 'a non-plain object';
 }
 

@@ -2,18 +2,17 @@
 //
 // A scaffold generator for the "how we know what we know" page every
 // product using this pattern should publish and link from every badge.
-// cruise-almanac hand-wrote this page once
-// (src/components/HowWeKnow.jsx); this generalizes the skeleton so the
-// next product doesn't start from a blank file. It intentionally leaves
-// TODO placeholders for the parts that are genuinely domain-specific
-// (what the product does NOT do, its correction history, its FAQ) —
-// this library can't know those for you, and pretending otherwise would
-// itself be the kind of overclaiming this pattern exists to prevent.
+// It generates the skeleton so the next product doesn't start from a blank
+// file. It intentionally leaves TODO placeholders for the parts that are
+// genuinely domain-specific (what the product does NOT do, its correction
+// history, its FAQ) — this library can't know those for you, and pretending
+// otherwise would itself be the kind of overclaiming this pattern exists to
+// prevent.
 
 import type { ProvenanceTier, ProvenanceTierDefinitions } from './types.js';
 import { PROVENANCE_TIERS } from './types.js';
 import { assertDefinitions, optionalString, readDefinition, readDenseArray, readOptionsObject } from './args.js';
-import { describeType, escapeForDisplay } from './text.js';
+import { describeType, escapeForDisplay, isArray } from './text.js';
 
 const FN = 'methodologyPageOutline';
 
@@ -32,7 +31,7 @@ export interface MethodologyPageOutlineOptions {
 /** `options.tiers`: `undefined` means all three tiers; otherwise a dense array of strings, copied once. */
 function readTiers(value: unknown): string[] {
   if (value === undefined) return [...PROVENANCE_TIERS];
-  if (!Array.isArray(value)) {
+  if (!isArray(value)) {
     throw new TypeError(`${FN}: options.tiers must be an array (received ${describeType(value)}).`);
   }
   return readDenseArray(value, 'options.tiers', FN).map((tier, i) => {

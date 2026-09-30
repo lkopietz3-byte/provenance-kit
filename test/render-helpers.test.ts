@@ -242,7 +242,10 @@ describe('methodologyPageOutline arguments (bug classes 2, 6, 8, 10)', () => {
   it('a missing definition is still a TODO, not an error, for undefined, null and absent entries', () => {
     for (const definitions of [{}, { modeled: undefined }, { modeled: null }]) {
       const text = outline(definitions, { tiers: ['modeled'] });
-      expect(text).toContain('### modeled\n\nTODO: no ProvenanceTierDefinition was supplied for "modeled". Add one so this section can be filled in automatically.\n');
+      expect(text).toContain(
+        '### modeled\n\nTODO: no ProvenanceTierDefinition was supplied for "modeled". ' +
+          'Add one so this section can be filled in automatically.\n\n## What we do not do',
+      );
     }
   });
 
