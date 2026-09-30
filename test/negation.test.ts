@@ -47,14 +47,16 @@ describe('negation applies within the same clause', () => {
   });
 });
 
-describe('the negation window is a fixed character count, not a clause parser (documented trade-off)', () => {
-  // README "Honest limits": this is a "characters before the match" window,
-  // not grammar. A negation earlier in the same window still suppresses a
-  // later, unrelated phrase — false positives here are the accepted cost of
-  // catching every real negation with a small, auditable rule.
-  it('a negation followed by punctuation still suppresses a phrase later in the window', () => {
-    expect(flaggedPhrases('Ships are not cheap. Our proprietary dataset covers them.')).toEqual([]);
-    expect(flaggedPhrases('These are not guesses, they are independently verified.')).toEqual([]);
+describe('the negation window is a character count that stops at a clause boundary', () => {
+  // See test/clause-negation.test.ts for the boundary rule itself. Here: the
+  // window still limits how far back a negation can reach inside one clause.
+  it('a negation in an earlier sentence does not suppress a later phrase', () => {
+    expect(flaggedPhrases('Ships are not cheap. Our proprietary dataset covers them.')).toEqual([
+      'proprietary dataset',
+    ]);
+    expect(flaggedPhrases('These are not guesses, they are independently verified.')).toEqual([
+      'independently verified',
+    ]);
   });
 
   it('a negation outside the window does not suppress the phrase', () => {

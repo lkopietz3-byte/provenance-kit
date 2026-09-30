@@ -111,7 +111,15 @@ const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 // A hyphen (ASCII or U+2010..U+2012) between two letters/digits reads as a
 // space for matching: "fact-checked" and "fact checked" are the same phrase.
 const INTRAWORD_HYPHEN = /(?<=[\p{L}\p{N}])[-\u2010-\u2012](?=[\p{L}\p{N}])/gu;
-const WHITESPACE_RUN = /\s+/g;
+// Any run of whitespace (JS `\s` plus U+0085, which `\s` omits) collapses to
+// one character. A run that contains a line break becomes '\n' instead of ' ',
+// so the negation check can still see where a line ended (see `foldText`).
+const WHITESPACE_RUN = /[\s\u0085]+/g;
+const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
+// A negation only reaches a phrase when none of these sits between them: the
+// clause-ending punctuation `, ; . : ! ?`, an em or en dash, or a line break
+// (already folded to '\n').
+const CLAUSE_BOUNDARY = /[,;.:!?\u2014\u2013\n]/;
 
 /**
  * Fold text into the form used for matching: Unicode compatibility
@@ -123,6 +131,12 @@ const WHITESPACE_RUN = /\s+/g;
  * afterwards (match index, negation window) is a position in the FOLDED
  * string. Mixing positions from the folded string with the original text
  * is a bug: lower-casing "\u0130" changes the string length.
+ *
+ * A whitespace run that contains a line break folds to '\n' rather than ' '
+ * so the negation check can treat a line break as a clause boundary. Matching
+ * must not see that difference: `matchView` turns every '\n' back into a
+ * space, one character for one character, so positions are identical in both
+ * views.
  */
 function foldText(text: string, caseSensitive: boolean): string {
   const folded = text
@@ -130,8 +144,13 @@ function foldText(text: string, caseSensitive: boolean): string {
     .replace(INVISIBLE_CHARS, '')
     .replace(CURLY_APOSTROPHES, "'")
     .replace(INTRAWORD_HYPHEN, ' ')
-    .replace(WHITESPACE_RUN, ' ');
+    .replace(WHITESPACE_RUN, (run) => (LINE_BREAK.test(run) ? '\n' : ' '));
   return caseSensitive ? folded : folded.toLowerCase();
+}
+
+/** The folded text as matching sees it: line breaks read as spaces, same length. */
+function matchView(folded: string): string {
+  return folded.replaceAll('\n', ' ');
 }
 
 /**
@@ -161,16 +180,24 @@ function findOccurrences(haystack: string, needle: string): number[] {
 }
 
 /**
- * True if the text immediately preceding a phrase match contains a
- * negation word ("not", "isn't", "without", ...), e.g. "not a
- * proprietary dataset" should not be flagged even though "proprietary
- * dataset" is a certainty phrase. `text` must be the folded string the
- * match index was computed on.
+ * True if the same clause, up to `windowSize` characters before a phrase
+ * match, contains a negation word ("not", "isn't", "without", ...), e.g.
+ * "not a proprietary dataset" should not be flagged even though
+ * "proprietary dataset" is a certainty phrase. A clause boundary (see
+ * CLAUSE_BOUNDARY) between the negation and the phrase ends the negation:
+ * "not guesses, independently verified" is still an offense. `text` must be
+ * the folded string (line breaks as '\n') the match index was computed on.
  */
 function isNegated(text: string, matchIndex: number, windowSize: number): boolean {
   const start = Math.max(0, matchIndex - windowSize);
-  const preceding = text.slice(start, matchIndex).replace(NEGATION_IDIOM_EXCEPTIONS, ' ');
-  return NEGATION_WORDS.test(preceding);
+  let preceding = text.slice(start, matchIndex);
+  for (let i = preceding.length - 1; i >= 0; i--) {
+    if (CLAUSE_BOUNDARY.test(preceding[i] as string)) {
+      preceding = preceding.slice(i + 1);
+      break;
+    }
+  }
+  return NEGATION_WORDS.test(preceding.replace(NEGATION_IDIOM_EXCEPTIONS, ' '));
 }
 
 /**
@@ -214,9 +241,10 @@ export function validateClaims(
   for (const claim of claims) {
     const tierIsValid = claim.tier != null && VALID_TIERS.includes(claim.tier);
     const foldedText = foldText(claim.text, caseSensitive);
+    const searchText = matchView(foldedText);
 
     for (const { phrase, reason } of normalizedPhrases) {
-      const occurrences = findOccurrences(foldedText, foldText(phrase, caseSensitive));
+      const occurrences = findOccurrences(searchText, matchView(foldText(phrase, caseSensitive)));
       for (const idx of occurrences) {
         if (isNegated(foldedText, idx, negationWindow)) continue;
 
