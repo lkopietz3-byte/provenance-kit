@@ -47,6 +47,9 @@ const options: ValidateClaimsOptions = {
 const offenses: ClaimOffense[] = validateClaims(claims, options);
 const firstReason: ClaimOffenseReason | undefined = offenses[0]?.reason;
 void firstReason;
+// An unrecognized tier string is echoed; a non-string tier is null.
+const offenseTier: string | null | undefined = offenses[0]?.tier;
+void offenseTier;
 
 const phraseInput: CertaintyPhraseInput = { phrase: 'guaranteed', reason: 'r' };
 const phraseRule: CertaintyPhraseRule = phraseInput as CertaintyPhraseRule;

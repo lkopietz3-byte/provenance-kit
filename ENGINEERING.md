@@ -8,6 +8,19 @@
   object, and never touches `Date.now()`, `Math.random()`, or object key
   order — for the same input and options, it always returns the same
   output.
+- Caller input is read once. `validateClaims`, `provenanceBadgeText` and
+  `methodologyPageOutline` copy claims, options and definitions a single time
+  (through an indexed traversal that rejects holes in sparse arrays) and only
+  use the copies, so a getter or Proxy cannot answer differently after it was
+  validated. Malformed input throws `TypeError` or `RangeError`; it is never
+  skipped or read as "off". Only `undefined` means "use the default".
+- Messages built from caller strings (offense `message`, thrown error text,
+  fallback headings) escape control and bidi characters as `\uXXXX`. Structured
+  fields (`claimId`, `claimText`, `phrase`) and the verbatim definition text
+  the helpers return are not escaped.
+- A negation only suppresses a certainty phrase within its own clause: a
+  boundary (`, ; . : ! ?`, an em or en dash, or a line break) between the two
+  ends it.
 - `PROVENANCE_TIERS` and `DEFAULT_CERTAINTY_PHRASES` are frozen
   (`Object.freeze`, including each phrase entry). Extend them by
   spreading into a new array, never by mutating in place.
@@ -45,9 +58,10 @@ installed package — not the local source tree.
 - **Not a citation/evidence tracker.** No staleness concept, no evidence
   storage beyond a single `sourceRef` string per claim.
 - **Not an exhaustive overclaiming vocabulary.** `DEFAULT_CERTAINTY_PHRASES`
-  covers the phrases from one real incident. Extend it per product.
-- **Negation is a character-count window, not a grammar parser.** See the
-  README's Honest limits for the specific trade-offs this implies.
+  is a small generic starter list. Extend it per product.
+- **Negation is a character window cut at clause punctuation, not a grammar
+  parser.** See the README's Honest limits for the specific trade-offs this
+  implies (it errs toward reporting).
 
 ## Are the types wrong? (attw)
 
@@ -67,8 +81,8 @@ points).
 publish via the `prepublishOnly` script, so a broken build cannot reach the registry by
 accident. To release: add a dated entry to `CHANGELOG.md`, bump `version` in
 `package.json`, commit, and push a `vX.Y.Z` tag that matches the new version, then let
-`.github/workflows/release.yml` install, verify, and publish it. (You can also run
-`npm publish` locally; `prepublishOnly` still guards it.)
+`.github/workflows/release.yml` install, audit, verify, check types (`npm run attw`), and
+publish it. (You can also run `npm publish` locally; `prepublishOnly` still guards it.)
 
 npm's unpublish policy is deliberately narrow. Within 72 hours of publishing, a version can be
 unpublished only if no other published package depends on it. After 72 hours, unpublishing also
@@ -80,8 +94,10 @@ bad release while it stays installable for anyone already pinned to it.
 
 ### Runtime support policy
 
-- **Supported (recommended for production):** Node 22 and 24 LTS; Node 26 current.
-- **Compatibility-tested:** Node 20. Node 20 is end-of-life — nodejs.org's release page
+- **Recommended for production:** Node 22 and 24 (LTS). Node 26 (current) is what the main
+  `verify` job runs on.
+- **Compatibility-tested:** Node 20 (CI pins 20.19.0 and 22.12.0, the `require(esm)` floors,
+  as well as the latest 20, 22 and 24). Node 20 is end-of-life — nodejs.org's release page
   (<https://nodejs.org/en/about/previous-releases>) lists it as `EOL`, with its final release
   dated Mar 24, 2026. The `compat` job in `verify.yml` still runs on Node 20 to catch
   regressions, but that runtime gets no security fixes upstream; don't run production traffic
@@ -96,9 +112,11 @@ bad release while it stays installable for anyone already pinned to it.
 `workflow_dispatch` or a pushed `v*` tag, requests a short-lived OIDC token instead of
 reading a stored npm token (`permissions: id-token: write`), and runs a plain `npm publish`
 with no token and no `--provenance` flag, because provenance attestation is generated
-automatically under trusted publishing. Before publishing, the workflow confirms the tag
-matches `package.json`'s `version` and checks whether that version is already on the
-registry, so re-running it on a version that's already published is a no-op rather than an
-error. Trusted publishing must be configured for this package on npmjs.com (linking it to this
+automatically under trusted publishing. On both triggers the workflow requires that it runs
+on a tag whose name matches `package.json`'s `version` (a manual run from a branch fails),
+then runs `npm run audit:dependencies`, `npm run verify` and `npm run attw`. It checks whether
+the version is already on the registry: only a confirmed `E404` counts as "not published";
+an existing version is a no-op, and any other registry error (outage, auth, network) fails
+the job instead of guessing. Trusted publishing must be configured for this package on npmjs.com (linking it to this
 GitHub repository and the `release.yml` workflow) before the first automated release will
 work.

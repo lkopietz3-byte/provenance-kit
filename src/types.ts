@@ -86,8 +86,11 @@ export interface Claim {
   /**
    * Optional pointer to what backs the claim — a URL, a document
    * citation, an internal record id. Not enforced as a specific format;
-   * `validateClaims` can be configured to require it be non-empty for
-   * given tiers (by default, `verified`).
+   * `validateClaims` can be configured to require it be visibly non-empty
+   * for given tiers (by default, `verified`): a value made only of
+   * whitespace, zero-width or bidi control characters counts as empty. It
+   * must be a string, `null` or `undefined`. The reference is never opened
+   * or checked.
    */
   sourceRef?: string;
 }

@@ -1,7 +1,6 @@
 // src/index.ts
 //
-// provenance-kit — public entry point. See README.md for the incident
-// this pattern fixes and a usage walkthrough.
+// provenance-kit — public entry point. See README.md for a usage walkthrough.
 
 export type {
   ProvenanceTier,

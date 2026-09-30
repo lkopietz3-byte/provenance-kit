@@ -56,9 +56,21 @@ npm install provenance-kit
 
 Or build from source: clone the repository and run `npm install && npm run build`.
 
-Ships as ESM; `require()` also works on Node versions that support
-`require(esm)` (20.19+, 22.12+). No runtime dependencies, needs Node 20 or
-later.
+No runtime dependencies. Ships TypeScript declarations. MIT licensed.
+
+It is an ESM package (`"type": "module"`). `import` is the supported way to
+load it. `require()` also works where Node can `require(esm)`:
+
+| How you load it | Node 20.19+ | Node 22.12+ | Node 24 and 26 | Older Node 20 or 22 |
+| --- | --- | --- | --- | --- |
+| `import { validateClaims } from 'provenance-kit'` | works | works | works | works |
+| `require('provenance-kit')` | works | works | works | fails (no `require(esm)`); use `import()` |
+
+Recommended runtimes are Node 22 and 24 (LTS) and Node 26 (current). Node 20 is
+end-of-life. CI still runs the tests and the installed-package probes on Node
+20.19.0 and 22.12.0 (the `require(esm)` floors) to catch regressions, but that
+is compatibility testing, not a recommendation. `engines` in `package.json` is
+`>=20`.
 
 ## Usage
 
@@ -131,11 +143,23 @@ validateClaims(claims, {
 ```
 
 Properly negated phrases are not flagged — `"these figures are not a
-proprietary dataset"` passes clean, because the scanner checks a window
-of text immediately before each match for a negation word (`not`,
-`isn't`, `without`, `never`, …).
+proprietary dataset"` passes clean, because the scanner checks the text
+immediately before each match, back to the start of its clause, for a
+negation word (`not`, `isn't`, `without`, `never`, …). A clause boundary
+(`, ; . : ! ?`, an em or en dash, or a line break) between the negation and the
+phrase ends the negation, so `"These are not guesses, they are independently
+verified."` is flagged.
 
-Each offense is structured, not a boolean:
+Bad input throws instead of being skipped: a sparse claims array, a claim
+that is not an object, an `id` or `text` that is not a string, or an option
+of the wrong type all raise `TypeError` or `RangeError` before any claim is
+scanned. A claim with a wrong `tier` is not an error; it is reported as an
+`unknown_tier` offense.
+
+Each offense is structured, not a boolean. `message` is safe to print: control
+characters, line breaks and bidi formatting characters that came from caller
+strings are shown as `\uXXXX` escapes. `claimId`, `claimText` and `phrase` are
+returned exactly as given:
 
 ```ts
 interface ClaimOffense {
@@ -144,7 +168,7 @@ interface ClaimOffense {
   phrase: string | null;
   reason: 'certainty_phrase_without_backing_tier' | 'missing_source_ref' | 'unknown_tier';
   message: string;
-  tier: ProvenanceTier | string | null | undefined;
+  tier: ProvenanceTier | (string & {}) | null; // an unrecognized string is echoed; a non-string tier is null
 }
 ```
 
@@ -214,11 +238,11 @@ Every export from `provenance-kit`, values and types:
 | `ClaimOffense` | Type: one flagged problem — `{ claimId, claimText, phrase, reason, message, tier }` |
 | `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }` — what `validateClaims` accepts |
 | `ValidateClaimsOptions` | Type: `{ certaintyPhrases?, certaintyRequiresTier?, requireSourceRefForTiers?, caseSensitive?, negationWindow? }` |
-| `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input` or an `extractClaims` that doesn't return an array. |
+| `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input`, claims or options (including a hole in a sparse array and a non-string `id` or `text`), and `RangeError` for an out-of-range option. |
 | `ProvenanceBadgeTextOptions` | Type: `{ includeShortDescription? }` |
-| `provenanceBadgeText(tier, definitions, options?)` | Function: pure badge-label lookup. Throws if `definitions[tier]` is missing. |
+| `provenanceBadgeText(tier, definitions, options?)` | Function: pure badge-label lookup. Throws `Error` if the tier has no own definition, `TypeError` for a non-string tier or a malformed definition, `RangeError` for a visibly blank label. |
 | `MethodologyPageOutlineOptions` | Type: `{ title?, intro?, tiers?, productName? }` |
-| `methodologyPageOutline(definitions, options?)` | Function: Markdown methodology-page scaffold. A missing tier definition becomes a `TODO` line, not a throw — but `definitions` itself must be an object (`null`/`undefined` throws, same as any other JS function called on the wrong type). |
+| `methodologyPageOutline(definitions, options?)` | Function: Markdown methodology-page scaffold. A missing tier definition becomes a `TODO` line, not a throw. `definitions` and `options` must be plain objects, `tiers` a dense array of strings (`TypeError` otherwise), and a visibly blank label is a `RangeError`. |
 
 ## When not to use this
 
@@ -242,22 +266,31 @@ Every export from `provenance-kit`, values and types:
 ## Honest limits
 
 - **The certainty-phrase list is a starting point, not a taxonomy.**
-  `DEFAULT_CERTAINTY_PHRASES` has 11 entries drawn from one real incident.
+  `DEFAULT_CERTAINTY_PHRASES` has 11 generic entries.
   It will not catch a phrase it doesn't know about (any of "confirmed
   accurate," "clinically proven," "audited," "third-party tested" — none
   of these are in the default list). Extend it for your product; a stale
   or narrow list is a false sense of coverage, not a lint.
-- **Negation is a fixed character window, not a parser.** `isNegated`
-  looks at the `negationWindow` characters (default 40) immediately before
-  a match for a negation word. It has no idea where a clause ends: `"These
-  are not guesses, they are independently verified."` is NOT flagged,
-  because "not" is inside the 40-character window even though it
-  grammatically negates a different clause. Narrowing `negationWindow`
-  trades this false negative for more false positives on legitimately
-  negated claims further from the phrase. A handful of idioms that contain
-  a negation word without negating anything ("no doubt," "not only," "no
-  one," …) are special-cased so they don't suppress a real offense, but
-  this is not an exhaustive list of English idiom.
+- **Negation is a character window that stops at a clause boundary, not a
+  parser.** The scanner looks at up to `negationWindow` characters (default
+  40) immediately before a match, cut off at the nearest `, ; . : ! ?`, em
+  dash, en dash or line break, for a negation word. That fixes the classic
+  false negative (`"These are not guesses, they are independently verified."`
+  is flagged), but the cut is punctuation, not grammar, and it errs toward
+  reporting:
+  - a comma or period inside a number counts as a boundary, so `"We do not
+    have 1,000 fact-checked records"` is flagged;
+  - a negation that governs a list is cut at the first comma, so `"We do not
+    use guaranteed, verified, or proprietary datasets"` is flagged for the
+    later items;
+  - a claim hard-wrapped across lines (`"not\nverified"`) is cut at the line
+    break; keep each claim on one line or unwrap it first.
+
+  These are false positives (noise). Narrowing `negationWindow` shrinks how far
+  back a negation reaches inside a clause; `0` turns negation handling off. A
+  handful of idioms that contain a negation word without negating anything
+  ("no doubt," "not only," "no one," …) are special-cased so they don't
+  suppress a real offense, but this is not an exhaustive list of English idiom.
 - **The phrase-boundary rule is asymmetric on purpose.** A match must start
   on a word boundary (so "unverified dataset" does not match the phrase
   "verified dataset"), but the END of a match is never boundary-checked,
@@ -280,16 +313,28 @@ Every export from `provenance-kit`, values and types:
   with a renderer that passes through raw HTML, if a tier definition's
   text can come from anywhere a non-developer can edit it (a CMS field,
   for example). Escape or sanitize first in that case.
-- **No runtime validation of `Claim` shape.** Beyond checking `tier` and
-  `sourceRef`, `validateClaims` does not verify that `id` and `text` are
-  actually strings — a malformed claim from untyped JSON can still throw
-  from deep inside string operations rather than up front.
+- **A clean result is not a verified claim, and an empty input is not a clean
+  result.** `validateClaims([])`, or an extractor that finds nothing, returns
+  `[]`, the same as claims that passed every check. If "no claims" should be an
+  error in your pipeline, check the input length yourself. A claim labeled
+  `verified` with any visible `sourceRef` string passes: the scanner does not
+  open, fetch or judge the reference.
+- **Empty phrases match nothing.** A `certaintyPhrases` entry that is empty
+  after folding (an empty string, or only invisible characters) is ignored
+  rather than treated as an error, so a blank row in a phrase list you load
+  from a file quietly adds no rule.
+- **Shape checks are shallow.** `validateClaims` checks that each claim is an
+  object with a string `id` and `text` and a string, `null` or `undefined`
+  `sourceRef`; it does not check that ids are unique or that `text` is a
+  single sentence. Callback results are checked for type only (an
+  `extractClaims` must return an array synchronously).
 
 ## Relationship to sibling kits
 
 `claims-registry-kit` is a complementary, not overlapping, tool: it tracks
 whether a public claim has a linked evidence reference and how long since
-that reference was last reviewed (`{ text, evidenceRef, verifiedAt }`).
+that reference was last reviewed (`{ text, evidenceRef, verifiedAt }`); it
+never opens or checks the reference itself.
 `provenance-kit` never stores a review date and has no concept of staleness
 — it only checks, at a point in time, whether a claim's wording is stronger
 than its declared tier allows. A product with both concerns (does this
@@ -298,22 +343,25 @@ tier) would reasonably use both libraries side by side; neither replaces
 the other.
 
 [grounding-kit](https://github.com/lkopietz3-byte/grounding-kit) checks a
-different question: whether a generated sentence is actually backed by the
-evidence map you gave the model, classifying it as `grounded`, `placeholder`,
-`ungrounded`, or `invalid`. `provenance-kit` never looks at evidence at all —
-it only checks whether a claim's certainty-implying wording matches its
-declared tier. A pipeline producing AI-generated, tiered claims could run
-`grounding-kit` first (is this sentence grounded in the evidence at all) and
+different question: whether each sentence of generated text carries a citation
+marker that points at an entry in the evidence map you gave the model,
+classifying it as `grounded`, `placeholder`, `ungrounded`, or `invalid`. It is a
+mechanical, sentence-level check; it never decides whether the evidence is true
+or whether the sentence follows from it. `provenance-kit` never looks at
+evidence at all — it only checks whether a claim's certainty-implying wording
+matches its declared tier. A pipeline producing AI-generated, tiered claims could
+run `grounding-kit` first (does each sentence cite evidence you supplied) and
 `provenance-kit` second (does its wording overclaim relative to its tier).
 
 [corroboration-kit](https://github.com/lkopietz3-byte/corroboration-kit)
-turns caller-collected signals about a claim into a bounded verdict
-(`confirmed`, `likely`, `mixed`, `not-found`, `inconclusive`) given a
-declared coverage. It does not know about provenance tiers, and
-`provenance-kit` does not know about corroboration verdicts or signals;
-the two are not integrated in code. A product could reasonably use a
-`corroboration-kit` verdict as one input to the human decision of which
-`ProvenanceTier` a claim is entitled to.
+applies fixed rules to signals you collected and labeled, and returns a verdict
+(`confirmed`, `likely`, `mixed`, `not-found`, `inconclusive`) bounded by the
+coverage you declare. It trusts your labels, and a verdict grades those signals;
+it is not independent verification. It does not know about provenance tiers,
+and `provenance-kit` does not know about corroboration verdicts or signals; the
+two are not integrated in code. A product could use a `corroboration-kit`
+verdict as one input to the human decision of which `ProvenanceTier` a claim is
+entitled to, not as a substitute for that decision.
 
 ## Design notes
 
@@ -325,8 +373,9 @@ the two are not integrated in code. A product could reasonably use a
 - **Structured offenses, not booleans.** A CI check that only says "fail"
   is a worse CI check than one that says which claim, which phrase, and
   why. `validateClaims` always returns the full list.
-- **Negation-aware.** "Not a proprietary dataset" is not the same claim
-  as "proprietary dataset," and the scanner treats them differently.
+- **Negation-aware, within a clause.** "Not a proprietary dataset" is not the
+  same claim as "proprietary dataset," and the scanner treats them differently;
+  a negation in an earlier clause does not carry over.
 - **Shared defaults are frozen.** `PROVENANCE_TIERS` and
   `DEFAULT_CERTAINTY_PHRASES` are module-level singletons, `Object.freeze`d
   (including each phrase entry) so one caller mutating them in place can't
