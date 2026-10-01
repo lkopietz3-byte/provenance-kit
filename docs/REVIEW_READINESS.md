@@ -1,6 +1,8 @@
 # Review and launch readiness
 
-Prepared September 30, 2026 against GitHub main `b4875ebcab75c2bd23422fdf7c966315d98d2d43`. This is a preparation plan, not a completed product audit or marketing certification.
+Updated September 30, 2026 against GitHub main `851400930e19346952c92d84c6c19ced8dbc6abf`. This note prepares review of work after the 0.2.0 release; it is not a completed product audit or marketing certification.
+
+Registry check on September 30, 2026 returned `provenance-kit@0.2.0` with gitHead `8514009`, matching the inspected main. This confirms the registry version and recorded source commit, not consumer behavior or adoption.
 
 ## Review cadence
 
@@ -18,7 +20,7 @@ Finish condition: The real packed API reproduces the intended wording violations
 
 ## Declared verification commands
 
-Read from the inspected main's `package.json`. These are declared gates, not execution receipts; see the candidate PR for hosted-check results and report unavailable checks explicitly. Use focused checks during implementation and the existing release gates on the frozen candidate.
+Read from the inspected main's `package.json`. These are declared gates; the PR records execution results for its final head. Use focused checks during implementation and the existing release gates on the frozen candidate.
 
 - `npm run verify`: `npm run lint && npm run typecheck && npm test && npm run build && npm run verify:package`
 - `npm run lint`: `eslint . --max-warnings=0`
