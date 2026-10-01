@@ -22,3 +22,13 @@ Label public claims verified, modeled or editorial, then check that their wordin
 - Do not run `npm publish` or push tags without explicit permission. Treat any claim that a version is published as Reported until the registry confirms it.
 - Runtime `dependencies` stay empty; add dev tooling only.
 - Keep unrelated uncommitted work intact; never stage or reset the whole tree.
+
+## Review preparation
+
+See [docs/REVIEW_READINESS.md](docs/REVIEW_READINESS.md) for milestone review cadence, declared verification gates and the next launch-preparation task.
+
+## Code Review Rules
+
+- Keep validateClaims a wording check against caller-supplied provenance tiers, not a fact checker or source verifier. An empty violation list does not prove truth, freshness or the sourceRef's authority.
+- Preserve pure, single-read validation and the raw-versus-display boundary: display messages escape control/bidi characters, while structured fields and caller-defined badge/methodology strings still require safe rendering by the consumer.
+- Preserve clause-bounded negation and frozen starter vocabularies; extend phrase lists by copying rather than mutating defaults. Do not market the character-window heuristic as a grammar parser or exhaustive certainty-language coverage.
