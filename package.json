@@ -1,6 +1,6 @@
 {
   "name": "provenance-kit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Label public claims verified, modeled or editorial, then check that their wording is not stronger than the label allows. A wording lint, not a fact-checker.",
   "keywords": [
     "provenance",
@@ -10,7 +10,8 @@
     "editorial",
     "trust",
     "typescript",
-    "zero-dependencies"
+    "zero-dependencies",
+    "honesty-kits"
   ],
   "author": "Lucas Kopietz",
   "license": "MIT",
@@ -18,7 +19,7 @@
     "type": "git",
     "url": "git+https://github.com/lkopietz3-byte/provenance-kit.git"
   },
-  "homepage": "https://github.com/lkopietz3-byte/provenance-kit#readme",
+  "homepage": "https://lkopietz3-byte.github.io/honesty-kits/#provenance-kit",
   "bugs": {
     "url": "https://github.com/lkopietz3-byte/provenance-kit/issues"
   },
