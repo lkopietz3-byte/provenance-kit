@@ -424,6 +424,25 @@ describe('review: imperative prefixes, quotes after abbreviations, direct cues a
   ]);
 });
 
+// Codex pass on c3b3333: an asserting idiom that contains a scope word, and a
+// relative "that" clause after an unrelated negation.
+describe('review: scope words inside idioms, relative clauses after a negation', () => {
+  table([
+    ['Codex: "nothing but" still ends the scope of an earlier "no"', 'No fees with nothing but guaranteed returns.', 'FLAG'],
+    ['variant: "nothing but" after "never"', 'Never overpay with nothing but guaranteed rates.', 'FLAG'],
+    ['variant: "nothing but" after "no setup"', 'No setup with nothing but fact-checked numbers.', 'FLAG'],
+    ["variant: \"nothing but\" after \"don't\"", "Don't settle for anything with nothing but a proprietary dataset behind it.", 'FLAG'],
+    ['Codex: relative "that" clause after "no signup"', 'No signup needed for plans that include support, updates, or guaranteed returns.', 'FLAG'],
+    ['variant: relative "that" clause after "no credit card"', 'No credit card required for accounts that come with alerts, reports, or guaranteed refunds.', 'FLAG'],
+    ['variant: relative "that" clause after "nothing to install"', 'Nothing to install on servers that run backups, monitoring, or guaranteed uptime.', 'FLAG'],
+    ['variant: relative "that" clause after "no setup fees"', 'No setup fees on plans that offer onboarding, training, or a guarantee.', 'FLAG'],
+    ['guard: "do not warrant that", single phrase', 'We do not warrant that results are guaranteed.', 'PASS'],
+    ['guard: "represent or warrant that" over a list', 'We do not represent or warrant that the data is accurate, complete, or guaranteed.', 'PASS'],
+    ['guard: "make no claim that" over a list', 'We make no claim that the figures are audited, reviewed, or independently verified.', 'PASS'],
+    ['guard: "nothing but" alone still asserts', 'Nothing but independently verified sources.', 'FLAG'],
+  ]);
+});
+
 // Strict mode for CI: `negationWindow: 0` turns every negation rule off (cues,
 // idioms, lists and the longer reach), so every phrase occurrence is reported.
 describe('strict mode: negationWindow 0 reports every phrase occurrence', () => {

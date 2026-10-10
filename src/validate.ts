@@ -294,12 +294,14 @@ const COMPLEMENT_LEAD_WORDS: ReadonlySet<string> = new Set(['as', 'any', 'or', '
 // independently verified" is reported.
 const FAR_REACH_STOP_WORD =
   /(?<![\p{L}\p{N}'])(?:because|since|when|whenever|while|whereas|if|unless|until|so|thanks to|with|which|who|whom|whose|where|after|before|as soon as|that)(?![\p{L}\p{N}'])/giu;
-// The same stops, without "that", end a negation's hold on a list it heads
-// (see `headsNegatedList`). "that" is left out because, after a verb such as
-// "warrant" or "represent", it carries the negation into the list: "We do not
+// The same stops end a negation's hold on a list it heads (see
+// `headsNegatedList`), with one exception: "that" right after a disclaimer verb
+// (DISCLAIMER_VERB_BEFORE) carries the negation into the list, as in "We do not
 // warrant that the service will be uninterrupted, error-free, or guaranteed".
-const LIST_HEAD_STOP_WORD =
-  /(?<![\p{L}\p{N}'])(?:because|since|when|whenever|while|whereas|if|unless|until|so|thanks to|with|which|who|whom|whose|where|after|before|as soon as)(?![\p{L}\p{N}'])/giu;
+// Anywhere else "that" opens a relative clause that asserts: "No signup needed
+// for plans that include support, updates, or guaranteed returns" is reported.
+const DISCLAIMER_VERB_BEFORE =
+  /(?<![\p{L}\p{N}'])(?:warrant|represent|promise|claim|guarantee|state|say|certify|assert|imply|suggest)s? $/iu;
 // The last word right before a match, followed by exactly one space.
 const PRECEDING_WORD = /(?<![\p{L}\p{N}'])([\p{L}]+) $/u;
 
@@ -589,26 +591,28 @@ function hasGoverningCue(segment: string, allowSubject: boolean): boolean {
  * "Never pay more for flights, hotels, or guaranteed rental cars" and "Don't
  * wait, apply today or the guaranteed rate expires" are still reported.
  */
-function headsNegatedList(part: string): boolean {
-  if (IMPERATIVE_OPENER.test(part)) return false;
+function headsNegatedList(raw: string, blanked: string): boolean {
+  if (IMPERATIVE_OPENER.test(raw)) return false;
   // A subordinate clause between the negation and the list ends its hold: "No
   // setup required because each plan includes support, updates, or guaranteed
   // returns" is reported.
   // A stop word with nothing after it ("not affiliated with, endorsed by, or
   // guaranteed by") is a dangling preposition, not a new clause.
   let start = 0;
-  for (const word of part.matchAll(LIST_HEAD_STOP_WORD)) {
+  for (const word of raw.matchAll(FAR_REACH_STOP_WORD)) {
     const end = word.index + word[0].length;
-    if (/[\p{L}\p{N}]/u.test(part.slice(end))) start = end;
+    if (!/[\p{L}\p{N}]/u.test(raw.slice(end))) continue;
+    if (word[0].toLowerCase() === 'that' && DISCLAIMER_VERB_BEFORE.test(raw.slice(0, word.index))) continue;
+    start = end;
   }
-  return hasGoverningCue(part.slice(start), false);
+  return hasGoverningCue(blanked.slice(start), false);
 }
 
-/** The text after the last `and` / `but`: only what follows it can negate. */
-function afterLastScopeWord(text: string): string {
+/** Where the text after the last `and` / `but` starts (0 if there is none). */
+function lastScopeEnd(text: string): number {
   let scopeStart = 0;
   for (const word of text.matchAll(SCOPE_ENDING_WORD)) scopeStart = word.index + word[0].length;
-  return text.slice(scopeStart);
+  return scopeStart;
 }
 
 // A number with a kept period or comma ("5,000", "99.9%") right before the
@@ -632,6 +636,7 @@ function pastNumber(text: string, matchIndex: number, floor: number): number {
  * end the longer reach (those plus each FAR_REACH_STOP_WORD).
  */
 class NegationIndex {
+  readonly text: string;
   readonly blanked: string;
   readonly strongCues: number[] = [];
   readonly boundaries: number[] = [];
@@ -646,8 +651,12 @@ class NegationIndex {
     for (let i = 0; i < this.blanked.length; i++) {
       if (CLAUSE_BOUNDARY.test(this.blanked[i] as string)) this.boundaries.push(i);
     }
-    const scopeWords = Array.from(this.blanked.matchAll(SCOPE_ENDING_WORD), (m) => m.index);
-    const stopWords = Array.from(this.blanked.matchAll(FAR_REACH_STOP_WORD), (m) => m.index);
+    // Scope and stop words come from the text as written, not the blanked
+    // copy: the "but" in "nothing but" still ends the scope of an earlier
+    // negation ("No fees with nothing but guaranteed returns" is reported).
+    this.text = text;
+    const scopeWords = Array.from(text.matchAll(SCOPE_ENDING_WORD), (m) => m.index);
+    const stopWords = Array.from(text.matchAll(FAR_REACH_STOP_WORD), (m) => m.index);
     this.nearStops = [...this.boundaries, ...scopeWords].sort((x, y) => x - y);
     this.farStops = [...this.nearStops, ...stopWords].sort((x, y) => x - y);
   }
@@ -740,8 +749,10 @@ function isNegatedList(index: NegationIndex, matchIndex: number, floor: number):
     const end = boundary;
     boundary = index.boundaryBefore(end, floor);
     const part = text.slice(boundary + 1, end);
-    if (headsNegatedList(afterLastScopeWord(part))) return true;
-    if (HAS_SCOPE_ENDING_WORD.test(part)) return false;
+    const raw = index.text.slice(boundary + 1, end);
+    const scope = lastScopeEnd(raw);
+    if (headsNegatedList(raw.slice(scope), part.slice(scope))) return true;
+    if (HAS_SCOPE_ENDING_WORD.test(raw)) return false;
     // Keep walking back only over short items joined by commas.
     if (!LIST_ITEM.test(part) || boundary < floor || text[boundary] !== ',') return false;
   }

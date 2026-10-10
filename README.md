@@ -329,9 +329,13 @@ Every export from `provenance-kit`, values and types:
     or bracket or after `please`, `just`, `so`, `now` or `hey`) never heads such
     a list, so
     `"Don't wait, apply today or the guaranteed rate expires."` is flagged, and
-    the same subordinating words (except `that`) end a negation's hold on the
-    list: `"No setup required because each plan includes support, updates, or
-    guaranteed returns."` is flagged.
+    the same subordinating words end a negation's hold on the list (`"No setup
+    required because each plan includes support, updates, or guaranteed
+    returns."` is flagged). The one exception is `that` right after a
+    disclaimer verb such as `warrant`, `represent` or `claim`, which carries
+    the negation into the list; a relative `that` clause does not (`"No signup
+    needed for plans that include support, updates, or guaranteed returns."` is
+    flagged).
 
   That fixes the classic false negative (`"These are not guesses, they are
   independently verified."` is flagged), but the cut is punctuation, a few

@@ -34,6 +34,12 @@ directions; see Changed.
   flights, hotels, or guaranteed rentals."`, `"Not available in the U.S.
   \u201cguaranteed returns\u201d is our slogan."` and `"Our error rate is zero
   (guaranteed)."` are reported.
+- **Scope words inside idioms and relative clauses.** The `but` in `nothing
+  but` still ends an earlier negation's scope, and a relative `that` clause
+  after an unrelated negation does not inherit it: `"No fees with nothing but
+  guaranteed returns."` and `"No signup needed for plans that include support,
+  updates, or guaranteed returns."` are reported. `"We do not warrant that the
+  service will be uninterrupted, error-free, or guaranteed."` stays negated.
 - **Hyphenated multiword cues and idioms.** `"far-from-guaranteed"` negates,
   and `"Not-just guaranteed returns."` and `"Without-question guaranteed
   returns."` are reported, as their spaced forms are.
