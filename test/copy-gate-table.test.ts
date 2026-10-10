@@ -390,6 +390,19 @@ describe('Unicode rows from review (conjoining Hangul jamo)', () => {
   });
 });
 
+describe('Unicode rows from review (combining marks that open a line)', () => {
+  const marked: CopyRule = { id: 'm', kind: 'banned', pattern: /\p{M}*guaranteed returns/u, reason: 'x' };
+  const where = (text: string) =>
+    scanCopy([{ id: 's', text }], [marked]).offenses.map((o) => [o.line, o.column, o.match]);
+
+  it('keeps a line break out of the cluster of the marks after it', () => {
+    expect(where('Header\n\u0301guaranteed returns')).toEqual([[2, 1, '\u0301guaranteed returns']]);
+    expect(where('Header\r\n\u0301guaranteed returns')).toEqual([[2, 1, '\u0301guaranteed returns']]);
+    expect(where('Header\r\u0301guaranteed returns')).toEqual([[2, 1, '\u0301guaranteed returns']]);
+    expect(where('Header \u0301guaranteed returns')).toEqual([[1, 7, ' \u0301guaranteed returns']]);
+  });
+});
+
 describe('results carry what a report needs', () => {
   it('reports position, original match text, reason and replacement', () => {
     const result = scanCopy(

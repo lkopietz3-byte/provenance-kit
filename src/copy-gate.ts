@@ -276,10 +276,11 @@ export function foldWithMap(text: string): Folded {
     for (let i = 0; i < length; ) {
       if (!coarse && carried === undefined && text.charCodeAt(i) < 0x80) {
         // A run of ASCII: nothing in it normalizes, hides or combines, except that
-        // the last character joins a mark that follows it.
+        // the last character joins a mark that follows it (never a line break, so
+        // marks that open a line map to that line).
         let k = i + 1;
         while (k < length && text.charCodeAt(k) < 0x80) k++;
-        if (k < length && text.charCodeAt(k) >= 0x300) k--;
+        if (k < length && text.charCodeAt(k) >= 0x300 && text.charCodeAt(k - 1) !== 0x0a && text.charCodeAt(k - 1) !== 0x0d) k--;
         if (k > i) {
           grow(k - i);
           for (let at = i; at < k; at++, count++) {
