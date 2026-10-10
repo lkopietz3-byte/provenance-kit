@@ -107,10 +107,11 @@ export interface ValidateClaimsOptions {
    * comma inside a number or a known abbreviation such as "U.S.") and at the
    * words `and` and `but`, so a negation in an earlier clause or conjunct
    * never suppresses a later phrase. Two narrow cases reach up to 500
-   * characters back, past this window but not past a boundary: a phrase right
-   * after "a", "an", "as", "any", "or", "nor", "be" or "been" ("We are not
-   * saying these numbers come with a guarantee"), and a negated list ("no
-   * representations, warranties or guarantees"). A negation still hides a
+   * characters back, past this window but not past a boundary or a
+   * subordinating word such as "because": a phrase right after "as", "any",
+   * "or", "nor", "be" or "been" ("has not been reviewed by any outside firm or
+   * independently verified"), and a negated list ("no representations,
+   * warranties or guarantees"). A negation still hides a
    * phrase it does not govern in the same clause (`"Don't miss our
    * independently verified rates."`), so `0` (negation off, including both
    * longer reaches) is the strictest setting. Default 40. Must be an integer
@@ -137,42 +138,54 @@ export type ClaimsInput =
 // Every cue that makes the scanner MORE lenient can hide a real overclaim, so
 // the weaker cues only reach a phrase a few words away (see `NEGATION_CUE`).
 
-// One alternation, three groups, so the classes cannot overlap:
+// One alternation, five groups, so the classes cannot overlap:
 //   1. subject cues   "no one", "no-one", "nobody": they negate a phrase only
 //      when nothing but auxiliary words sits between ("No one can guarantee",
 //      "Nobody has independently verified"). "No one disputes this independently
 //      verified figure" asserts the figure, so other words in between stop it.
-//   2. weak cues      "unable", "lack(s)", "lacking", "zero", "instead of",
-//      "rather than": they negate a phrase at most WEAK_CUE_REACH words later
-//      ("unable to guarantee", "rather than a guarantee"), not one that belongs
-//      to a later verb ("Instead of guessing we give you independently verified
-//      data" is still reported).
-//   3. strong cues    "not", "never", "no", "none", "nothing", "nor",
-//      "neither", "without", "hardly", "barely", "far from", "cannot" and every
-//      "n't" contraction ("isn't", "ain't", "mustn't", "needn't", ...): they
-//      negate anything after them in the same scope and window.
-// Contractions use one `n't` pattern: a letter run followed by "n't". Text is
-// folded (curly apostrophes -> straight) before this runs.
+//   2. direct cues    "zero", "lack", "lacks", "lacking": they negate only a
+//      phrase that follows directly ("zero guarantees", "lacks independently
+//      verified data"). "Zero downtime guaranteed" and "Other apps lack a
+//      proprietary dataset like ours" assert what follows, so are reported.
+//   3. "unable": only across UNABLE_GAP_WORDS ("unable to guarantee"), never
+//      across a second verb ("unable to match our guaranteed rate").
+//   4. contrast cues  "instead of", "rather than": only across
+//      CONTRAST_GAP_WORDS ("rather than a guarantee"), never across a verb or a
+//      possessive ("Get answers rather than guesses with our guarantee").
+//   5. strong cues    "not", "never", "no", "none", "nothing", "nor",
+//      "neither", "without", "hardly", "barely", "far from", "cannot" and the
+//      listed "n't" contractions: they negate anything after them in the same
+//      scope and window. "ain't" is left out on purpose: "If it ain't
+//      guaranteed we don't sell it" is a slogan that asserts the guarantee.
+// Text is folded (curly apostrophes -> straight) before this runs.
 const NEGATION_CUE = new RegExp(
   "(?<![\\p{L}\\p{N}'])(?:" +
     '(no[ \\-\\u2010-\\u2012]one|nobody)' +
-    '|(unable|lacks|lacking|lack|zero|instead of|rather than)' +
-    "|(not|never|no|none|nothing|nor|neither|without|hardly|barely|far from|cannot|\\p{L}+n't)" +
+    '|(zero|lacks|lacking|lack)' +
+    '|(unable)' +
+    '|(instead of|rather than)' +
+    '|(not|never|no|none|nothing|nor|neither|without|hardly|barely|far from|cannot|' +
+    "(?:is|was|are|were|does|do|did|ca|could|wo|would|should|has|have|had|must|need|sha|might|ought)n't)" +
     ")(?![\\p{L}\\p{N}'])",
   'giu',
 );
 
-/** How many words a weak cue ("unable", "lacks", "rather than", ...) reaches. */
-const WEAK_CUE_REACH = 3;
+const NO_GAP_WORDS: ReadonlySet<string> = new Set();
+const UNABLE_GAP_WORDS: ReadonlySet<string> = new Set([
+  'to', 'be', 'been', 'being', 'fully', 'currently', 'yet', 'ever', 'always', 'legally',
+]);
+const CONTRAST_GAP_WORDS: ReadonlySet<string> = new Set(['a', 'an', 'any', 'be', 'being']);
 
 // Words that may sit between a subject cue ("no one", "nobody") and the phrase
 // it negates: auxiliaries, modals and a few adverbs. Anything else (a main
 // verb such as "disputes", or "else") means the phrase is not what is negated.
-const SUBJECT_CUE_GAP_WORDS = new Set([
+const SUBJECT_CUE_GAP_WORDS: ReadonlySet<string> = new Set([
   'can', 'could', 'will', 'would', 'shall', 'should', 'may', 'might', 'must',
   'do', 'does', 'did', 'has', 'have', 'had', 'is', 'was', 'are', 'were',
   'be', 'been', 'being', 'ever', 'really', 'truly', 'fully', 'actually', 'yet',
 ]);
+/** The most gap words any cue other than a strong cue may reach across. */
+const MAX_GAP_WORDS = 4;
 
 // Idioms that contain a negation word but assert what follows. They are blanked
 // out of the window before cues are looked for, so they cannot hide a phrase
@@ -216,9 +229,10 @@ const ASSERTING_IDIOM = new RegExp(
 );
 
 // A negating prefix attached to the phrase itself: "non-guaranteed", "non
-// guaranteed", "non-proprietary dataset", "un-guaranteed". It only counts when
-// it touches the match: "Non-stop guaranteed support" is still reported.
-const ATTACHED_NEGATING_PREFIX = /(?<![\p{L}\p{N}'])(?:non[- \u2010-\u2013]|un[-\u2010-\u2013])$/iu;
+// guaranteed", "non-proprietary dataset", "un-guaranteed", "no-guarantee". It
+// only counts when it touches the match: "Non-stop guaranteed support" and
+// "No-risk guaranteed trial" are still reported.
+const ATTACHED_NEGATING_PREFIX = /(?<![\p{L}\p{N}'])(?:non[- \u2010-\u2013]|un[-\u2010-\u2013]|(?:no|zero)[-\u2010-\u2012])$/iu;
 
 // `and` and `but` end a negation's scope, like a clause boundary does. "No fees
 // and guaranteed returns" and "not a guess but a verified dataset" each negate
@@ -233,16 +247,17 @@ const HAS_SCOPE_ENDING_WORD = new RegExp(SCOPE_ENDING_WORD.source, 'u');
 // A negated list that runs past commas: "no representations, warranties or
 // guarantees", "do not use guaranteed, verified, or proprietary datasets". The
 // commas do not end the negation when ALL of these hold:
-//   - the text from the last comma to the phrase is at most two words, then
-//     `or` or `nor`, then at most two of "a an the any other all" (LIST_TAIL);
+//   - the text from the last comma to the phrase is at most one word, then
+//     `or` or `nor`, then at most two of "a an any" (LIST_TAIL);
 //   - each comma-separated part before that is one to three words (LIST_ITEM);
 //   - the first part that is not a plain item carries a negation that governs
 //     what follows it (see `headsNegatedList`).
-// "Don't wait, act now or lose your guaranteed rate" is still reported: after
-// "or" comes a verb, not a determiner.
+// "Don't wait, act now or lose your guaranteed rate" and "Don't wait, apply
+// today or the guaranteed rate expires" are still reported: an imperative
+// never heads a list, and "the" after "or" does not continue one.
 // Word characters here include the kept period and comma (see KEPT_PERIOD), so
 // "etc." and "1,000" count as one word.
-const LIST_TAIL = /^ ?(?:[\p{L}\p{N}'\-\u2010-\u2012\u2024\ufe50]+ ){0,2}(?:or|nor) (?:(?:a|an|the|any|other|all) ){0,2}$/iu;
+const LIST_TAIL = /^ ?(?:[\p{L}\p{N}'\-\u2010-\u2012\u2024\ufe50]+ )?(?:or|nor) (?:(?:a|an|any) ){0,2}$/iu;
 const LIST_ITEM = /^ ?[\p{L}\p{N}'\-\u2010-\u2012\u2024\ufe50]+(?: [\p{L}\p{N}'\-\u2010-\u2012\u2024\ufe50]+){0,2} ?$/u;
 const MAX_LIST_ITEMS = 8;
 // How far back, in characters, a negated list and a phrase in complement
@@ -251,21 +266,28 @@ const MAX_LIST_ITEMS = 8;
 // boundaries cannot make each match rescan everything before it.
 const EXTENDED_REACH = 500;
 // A clause part that opens with an imperative negation ("Never pay ...",
-// "Don't miss ...", "Do not use ..."). See `headsNegatedList`.
+// "Don't miss ...", "Do not use ..."). It never heads a negated list.
 const IMPERATIVE_OPENER = /^ *(?:never|don't|do not)(?![\p{L}\p{N}'])/iu;
 
 // Words that put the phrase after them in complement position, where a
-// disclaimer's negation usually lands however long the clause is ("not ... as a
-// guarantee", "not ... or independently verified", "not ... been fact-checked").
-// See `isNegatedComplement`. "is" and "are" are left out on purpose: "No hidden
-// fees will ever appear because every quote is guaranteed" is an overclaim.
-const COMPLEMENT_LEAD_WORDS = new Set(['a', 'an', 'as', 'any', 'or', 'nor', 'be', 'been']);
+// disclaimer's negation usually lands however long the clause is ("not ... as
+// guaranteed", "not ... or independently verified", "not ... been
+// fact-checked"). See `NegationIndex`. "a", "an", "is" and "are" are left out on
+// purpose: "Never worry about a missed payment again thanks to autopay backed by
+// a guarantee" and "every quote is guaranteed" are overclaims.
+const COMPLEMENT_LEAD_WORDS: ReadonlySet<string> = new Set(['as', 'any', 'or', 'nor', 'be', 'been']);
+// Words that start a new clause inside a sentence. The longer reach (see
+// `NegationIndex`) stops at them, as it does at a boundary or `and` / `but`: "You
+// don't have to take our word for it because every number has been
+// independently verified" is reported.
+const FAR_REACH_STOP_WORD =
+  /(?<![\p{L}\p{N}'])(?:because|since|when|whenever|while|whereas|if|unless|until|so|thanks to|with|which|who|whom|whose|where|after|before|as soon as|that)(?![\p{L}\p{N}'])/giu;
 // The last word right before a match, followed by exactly one space.
 const PRECEDING_WORD = /(?<![\p{L}\p{N}'])([\p{L}]+) $/u;
 
 // A word for counting gaps: letters and digits, joined by an apostrophe, a
 // hyphen or a kept period or comma ("can't", "no-risk", "u.s.", "1,000").
-const WORD = /[\p{L}\p{N}]+(?:['\-\u2010-\u2012\u2024\ufe50][\p{L}\p{N}]+)*/gu;
+const GAP_WORD = /[\p{L}\p{N}]+(?:['\-\u2010-\u2012\u2024\ufe50][\p{L}\p{N}]+)*/gu;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 const LEADING_WORD_AT = /[\p{L}\p{N}]+/uy;
 
@@ -345,13 +367,17 @@ function foldConfusables(text: string): string {
 // left in the text by the time this runs.
 const KEPT_PERIOD = '\u2024'; // ONE DOT LEADER
 const KEPT_COMMA = '\ufe50'; // SMALL COMMA
-// A decimal point and a thousands separator: "99.9%", "1,000".
+// A decimal point and a thousands separator: "99.9%", "1,000". A negation
+// still does not reach past such a number right before the phrase (see
+// `pastNumber`).
 const DECIMAL_POINT = /(?<=\d)\.(?=\d)/g;
 const THOUSANDS_COMMA = /(?<=\d),(?=\d{3}(?!\d))/g;
-// Dotted initialisms ("U.S.", "e.g.", "i.e.", "a.m."): every inner period is
-// kept. The final one is kept too unless a new sentence plausibly starts there
-// (end of text, a line break, or a space and then an upper-case letter), except
-// after "e.g." and "i.e.", which do not end sentences.
+// Dotted initialisms ("U.S.", "a.m."): every inner period is kept. The final
+// one is kept too unless a new sentence plausibly starts there (end of text, a
+// line break, or a space, any opening quotes or brackets, and then an
+// upper-case letter or a digit). "e.g." and "i.e." are not kept at all: they
+// often introduce a new claim ("No hidden fees i.e. guaranteed transparent
+// pricing").
 const INITIALISM = /(?<![\p{L}\p{N}.])(?:\p{L}\.){2,}/gu;
 // Abbreviations that are followed by a name or a number, never a sentence end:
 // Dr. Mr. Mrs. Ms. Mx. Prof. St. Sr. Jr. vs.
@@ -360,11 +386,11 @@ const TITLE_ABBREVIATION = /(?<![\p{L}\p{N}])(?:dr|mr|mrs|ms|mx|prof|st|sr|jr|vs
 // Kept unless a new sentence plausibly starts after them (as above).
 const SENTENCE_FINAL_ABBREVIATION = /(?<![\p{L}\p{N}])(?:etc|inc|ltd|co|corp|approx)\./giu;
 // No `i` flag: under `iu`, `\p{Lu}` also matches lower-case letters.
-const NEW_SENTENCE_AFTER = /^(?:$|\n| \p{Lu})/u;
+const NEW_SENTENCE_AFTER = /^(?:$|\n| ["'\p{Ps}\p{Pi}]{0,4}[\p{Lu}\p{N}])/u;
 
-/** The two UTF-16 units at `index`: all NEW_SENTENCE_AFTER needs, without copying the rest of the text. */
+/** A few UTF-16 units at `index`: all NEW_SENTENCE_AFTER needs, without copying the rest of the text. */
 function peek(text: string, index: number): string {
-  return text.slice(index, index + 2);
+  return text.slice(index, index + 8);
 }
 
 /**
@@ -378,10 +404,10 @@ function markNonBoundaryPunctuation(text: string): string {
     .replace(DECIMAL_POINT, KEPT_PERIOD)
     .replace(THOUSANDS_COMMA, KEPT_COMMA)
     .replace(INITIALISM, (dots: string, offset: number) => {
-      const inner = dots.slice(0, -1).replaceAll('.', KEPT_PERIOD);
       const lower = dots.toLowerCase();
-      const keepLast =
-        lower === 'e.g.' || lower === 'i.e.' || !NEW_SENTENCE_AFTER.test(peek(text, offset + dots.length));
+      if (lower === 'e.g.' || lower === 'i.e.') return dots;
+      const inner = dots.slice(0, -1).replaceAll('.', KEPT_PERIOD);
+      const keepLast = !NEW_SENTENCE_AFTER.test(peek(text, offset + dots.length));
       return inner + (keepLast ? KEPT_PERIOD : '.');
     })
     .replace(TITLE_ABBREVIATION, (abbr) => abbr.slice(0, -1) + KEPT_PERIOD)
@@ -492,44 +518,55 @@ function findOccurrences(haystack: string, needle: string): number[] {
   return indices;
 }
 
-/** The words in `text`, lower-cased. */
-function wordsOf(text: string): string[] {
-  return Array.from(text.matchAll(WORD), (m) => m[0].toLowerCase());
+/**
+ * True if every word in `text` from `from` to the end is in `allowed`, and there
+ * are at most MAX_GAP_WORDS of them. Stops at the first word that fails, so a
+ * long clause costs no more than a short one.
+ */
+function gapFits(text: string, from: number, allowed: ReadonlySet<string>): boolean {
+  GAP_WORD.lastIndex = from;
+  for (let count = 0; ; count++) {
+    const word = GAP_WORD.exec(text);
+    if (word === null) return true;
+    if (count >= MAX_GAP_WORDS || !allowed.has(word[0].toLowerCase())) return false;
+  }
+}
+
+/** The gap words a non-strong cue may reach across (see NEGATION_CUE), or null for a strong cue. */
+function gapWordsFor(cue: RegExpMatchArray, allowSubject: boolean): ReadonlySet<string> | null | undefined {
+  if (cue[5] !== undefined) return null;
+  if (cue[1] !== undefined) return allowSubject ? SUBJECT_CUE_GAP_WORDS : undefined;
+  if (cue[2] !== undefined) return NO_GAP_WORDS;
+  if (cue[3] !== undefined) return UNABLE_GAP_WORDS;
+  return CONTRAST_GAP_WORDS;
 }
 
 /**
  * True if `segment` contains a negation cue that governs its END (where the
- * phrase, or the next list comma, starts): a strong cue anywhere, a weak cue at
- * most WEAK_CUE_REACH words back, or (when `allowSubject`) a subject cue with
- * only auxiliary words in between. `segment` has its idioms blanked already.
+ * phrase, or the next list comma, starts): a strong cue anywhere, or another
+ * cue whose gap words all fit its class (see NEGATION_CUE). Subject cues count
+ * only when `allowSubject`. `segment` has its idioms blanked already.
  */
 function hasGoverningCue(segment: string, allowSubject: boolean): boolean {
   for (const cue of segment.matchAll(NEGATION_CUE)) {
-    const gap = wordsOf(segment.slice(cue.index + cue[0].length));
-    if (cue[3] !== undefined) return true;
-    if (cue[2] !== undefined && gap.length <= WEAK_CUE_REACH) return true;
-    if (cue[1] !== undefined && allowSubject && gap.every((w) => SUBJECT_CUE_GAP_WORDS.has(w))) return true;
+    const allowed = gapWordsFor(cue, allowSubject);
+    if (allowed === null) return true;
+    if (allowed !== undefined && gapFits(segment, cue.index + cue[0].length, allowed)) return true;
   }
   return false;
 }
 
 /**
  * True if `part` (the comma-separated part that opens a negated list) carries a
- * negation that governs the items after it: a strong cue anywhere ("We make no
- * representations", "Nothing in this article constitutes a recommendation"),
- * or a weak cue at most WEAK_CUE_REACH words before the comma. An imperative
- * opener ("Never", "Don't", "Do not" as the first words) also needs that short
- * reach, because it usually governs its own verb, not the list: "Never pay more
- * for flights, hotels, or guaranteed rental cars" is still reported.
+ * negation that governs the items after it ("We make no representations",
+ * "Nothing in this article constitutes a recommendation"). An imperative
+ * opener ("Never", "Don't", "Do not") never does: it governs its own verb, so
+ * "Never pay more for flights, hotels, or guaranteed rental cars" and "Don't
+ * wait, apply today or the guaranteed rate expires" are still reported.
  */
 function headsNegatedList(part: string): boolean {
-  const imperative = IMPERATIVE_OPENER.test(part);
-  for (const cue of part.matchAll(NEGATION_CUE)) {
-    if (cue[1] !== undefined) continue;
-    const short = wordsOf(part.slice(cue.index + cue[0].length)).length <= WEAK_CUE_REACH;
-    if (short || (cue[3] !== undefined && !imperative)) return true;
-  }
-  return false;
+  if (IMPERATIVE_OPENER.test(part)) return false;
+  return hasGoverningCue(part, false);
 }
 
 /** The text after the last `and` / `but`: only what follows it can negate. */
@@ -539,6 +576,87 @@ function afterLastScopeWord(text: string): string {
   return text.slice(scopeStart);
 }
 
+// A number with a kept period or comma ("5,000", "99.9%") right before the
+// phrase. A negation does not reach past it: "No fees on your first $5,000
+// guaranteed" is reported.
+const NUMBER_BEFORE_PHRASE = /\d[\u2024\ufe50]\d+%? ?$/u;
+
+/** Raise `floor` past a number with a kept separator that sits right before the match. */
+function pastNumber(text: string, matchIndex: number, floor: number): number {
+  const sliceStart = Math.max(floor, matchIndex - 32);
+  const number = NUMBER_BEFORE_PHRASE.exec(text.slice(sliceStart, matchIndex));
+  return number === null ? floor : Math.max(floor, sliceStart + number.index + 2);
+}
+
+/**
+ * Everything `isNegated` looks up, built once per claim the first time a match
+ * needs it, so many matches in one long clause stay cheap (each lookup is a
+ * binary search): the idiom-blanked folded text, the start of every strong
+ * negation cue in it, every clause boundary, the positions that end a cue's
+ * reach in the window (a boundary, `and` / `but`), and the positions that also
+ * end the longer reach (those plus each FAR_REACH_STOP_WORD).
+ */
+class NegationIndex {
+  readonly blanked: string;
+  readonly strongCues: number[] = [];
+  readonly boundaries: number[] = [];
+  readonly nearStops: number[];
+  readonly farStops: number[];
+
+  constructor(text: string) {
+    this.blanked = blankIdioms(text);
+    for (const cue of this.blanked.matchAll(NEGATION_CUE)) {
+      if (cue[5] !== undefined) this.strongCues.push(cue.index);
+    }
+    for (let i = 0; i < this.blanked.length; i++) {
+      if (CLAUSE_BOUNDARY.test(this.blanked[i] as string)) this.boundaries.push(i);
+    }
+    const scopeWords = Array.from(this.blanked.matchAll(SCOPE_ENDING_WORD), (m) => m.index);
+    const stopWords = Array.from(this.blanked.matchAll(FAR_REACH_STOP_WORD), (m) => m.index);
+    this.nearStops = [...this.boundaries, ...scopeWords].sort((x, y) => x - y);
+    this.farStops = [...this.nearStops, ...stopWords].sort((x, y) => x - y);
+  }
+
+  /** Index of the last clause boundary in `[floor, end)`, or `floor - 1` if there is none. */
+  boundaryBefore(end: number, floor: number): number {
+    const at = lastBefore(this.boundaries, end);
+    return at === undefined || at < floor ? floor - 1 : at;
+  }
+
+  /** True if a strong cue starts in `[floor, end)` with no stop from `stops` after it. */
+  strongCueReaches(end: number, floor: number, stops: readonly number[]): boolean {
+    const cue = lastBefore(this.strongCues, end);
+    if (cue === undefined || cue < floor) return false;
+    const stop = lastBefore(stops, end);
+    return stop === undefined || stop < cue;
+  }
+}
+
+/** The largest value in ascending `list` that is below `limit`. */
+function lastBefore(list: readonly number[], limit: number): number | undefined {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((list[mid] as number) < limit) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo === 0 ? undefined : list[lo - 1];
+}
+
+/** Per-claim state for `isNegated`: the folded text and its lazily built index. */
+interface NegationContext {
+  text: string;
+  index?: NegationIndex;
+}
+
+// "No other" right before the phrase negates it ("No other guarantee
+// applies"); followed by another word it is an asserting idiom (blanked).
+const NO_OTHER_BEFORE_PHRASE = /(?<![\p{L}\p{N}'])no other $/iu;
+// How far back, in characters, the tail scan for non-strong cues looks. They
+// reach at most MAX_GAP_WORDS words, which fits in this.
+const TAIL_SCAN = 160;
+
 /**
  * True if a phrase match is negated in its own clause (see the vocabulary
  * notes above): "not a proprietary dataset", "no one can guarantee",
@@ -546,62 +664,51 @@ function afterLastScopeWord(text: string): string {
  * must start within `windowSize` characters before the match, and a clause
  * boundary (see CLAUSE_BOUNDARY) or `and` / `but` between the cue and the
  * phrase ends it, so "not guesses, independently verified" is still an
- * offense. `text` must be the folded string (line breaks as '\n') the match
- * index was computed on.
+ * offense. `ctx.text` must be the folded string (line breaks as '\n') the
+ * match index was computed on.
  */
-function isNegated(text: string, matchIndex: number, windowSize: number): boolean {
-  const floor = windowStart(text, matchIndex, windowSize);
-  if (ATTACHED_NEGATING_PREFIX.test(text.slice(Math.max(floor, matchIndex - 8), matchIndex))) return true;
+function isNegated(ctx: NegationContext, matchIndex: number, windowSize: number): boolean {
+  const text = ctx.text;
+  const floor = pastNumber(text, matchIndex, windowStart(text, matchIndex, windowSize));
+  const before = text.slice(Math.max(floor, matchIndex - 10), matchIndex);
+  if (ATTACHED_NEGATING_PREFIX.test(before) || NO_OTHER_BEFORE_PHRASE.test(before)) return true;
 
-  // The nearest clause part: back to the last boundary inside the window.
-  const boundary = boundaryBefore(text, matchIndex, floor);
-  const nearest = blankIdioms(text.slice(boundary + 1, matchIndex));
-  if (hasGoverningCue(afterLastScopeWord(nearest), true)) return true;
+  const index = (ctx.index ??= new NegationIndex(text));
+  // Strong cues: anywhere in the window after the last boundary or and/but.
+  if (index.strongCueReaches(matchIndex, floor, index.nearStops)) return true;
+  // Other cues reach only a few words: scan the tail of the window.
+  const stop = lastBefore(index.nearStops, matchIndex);
+  const tailStart = windowStart(text, matchIndex, Math.min(matchIndex - Math.max(floor, (stop ?? -1) + 1), TAIL_SCAN));
+  if (hasGoverningCue(index.blanked.slice(tailStart, matchIndex), true)) return true;
 
   if (windowSize === 0) return false;
-  const reachFloor = windowStart(text, matchIndex, Math.max(windowSize, EXTENDED_REACH));
-  return isNegatedList(text, boundary, nearest, reachFloor) || isNegatedComplement(text, matchIndex, reachFloor);
+  const reachFloor = pastNumber(text, matchIndex, windowStart(text, matchIndex, Math.max(windowSize, EXTENDED_REACH)));
+  if (isNegatedList(index, matchIndex, reachFloor)) return true;
+
+  const lead = PRECEDING_WORD.exec(text.slice(Math.max(reachFloor, matchIndex - 8), matchIndex));
+  if (lead === null || !COMPLEMENT_LEAD_WORDS.has((lead[1] as string).toLowerCase())) return false;
+  return index.strongCueReaches(matchIndex, reachFloor, index.farStops);
 }
 
 /**
- * A negated list that runs past commas (see LIST_TAIL). `boundary` is the
- * comma (or other boundary) that starts `nearest`, the part holding the match.
+ * A negated list that runs past commas (see LIST_TAIL), ending at the match.
  * The walk is not limited by `negationWindow`: a list carries its negation, the
  * way "We do not warrant that the service will be uninterrupted, error-free,
  * or guaranteed" does. It is limited by the shape checks, MAX_LIST_ITEMS and
  * EXTENDED_REACH (`floor`).
  */
-function isNegatedList(text: string, boundary: number, nearest: string, floor: number): boolean {
-  if (boundary < floor || text[boundary] !== ',' || !LIST_TAIL.test(nearest)) return false;
+function isNegatedList(index: NegationIndex, matchIndex: number, floor: number): boolean {
+  const text = index.blanked;
+  let boundary = index.boundaryBefore(matchIndex, floor);
+  if (boundary < floor || text[boundary] !== ',' || !LIST_TAIL.test(text.slice(boundary + 1, matchIndex))) return false;
   for (let items = 0; items < MAX_LIST_ITEMS; items++) {
     const end = boundary;
-    boundary = boundaryBefore(text, end, floor);
-    const part = blankIdioms(text.slice(boundary + 1, end));
+    boundary = index.boundaryBefore(end, floor);
+    const part = text.slice(boundary + 1, end);
     if (headsNegatedList(afterLastScopeWord(part))) return true;
     if (HAS_SCOPE_ENDING_WORD.test(part)) return false;
     // Keep walking back only over short items joined by commas.
     if (!LIST_ITEM.test(part) || boundary < floor || text[boundary] !== ',') return false;
-  }
-  return false;
-}
-
-/**
- * Past the character window, a strong negation still reaches a phrase in
- * complement position, right after one of COMPLEMENT_LEAD_WORDS, anywhere
- * earlier in the same clause and scope, up to EXTENDED_REACH characters back
- * (`floor`): "We are not saying that any of these
- * numbers come with a guarantee", "has not been reviewed by any outside firm or
- * independently verified". An attributive use ("our independently verified
- * rate tracker", "every quote is guaranteed") does not get this reach, so "No
- * credit card required to start your free trial of our independently verified
- * rate tracker" is still reported.
- */
-function isNegatedComplement(text: string, matchIndex: number, floor: number): boolean {
-  const lead = PRECEDING_WORD.exec(text.slice(Math.max(floor, matchIndex - 8), matchIndex));
-  if (lead === null || !COMPLEMENT_LEAD_WORDS.has((lead[1] as string).toLowerCase())) return false;
-  const clause = blankIdioms(text.slice(boundaryBefore(text, matchIndex, floor) + 1, matchIndex));
-  for (const cue of afterLastScopeWord(clause).matchAll(NEGATION_CUE)) {
-    if (cue[3] !== undefined) return true;
   }
   return false;
 }
@@ -617,14 +724,6 @@ function windowStart(text: string, matchIndex: number, size: number): number {
   if (!isWordCodePoint(codePointBefore(text, floor))) return floor;
   LEADING_WORD_AT.lastIndex = floor;
   return LEADING_WORD_AT.test(text) ? Math.min(LEADING_WORD_AT.lastIndex, matchIndex) : floor;
-}
-
-/** Index of the last clause boundary in `text[floor, end)`, or `floor - 1` if there is none. */
-function boundaryBefore(text: string, end: number, floor: number): number {
-  for (let i = end - 1; i >= floor; i--) {
-    if (CLAUSE_BOUNDARY.test(text[i] as string)) return i;
-  }
-  return floor - 1;
 }
 
 /** Blank asserting idioms with spaces, so the remaining text keeps its shape. */
@@ -867,10 +966,11 @@ export function validateClaims(
     const tierField = typeof tier === 'string' ? tier : null;
     const foldedText = foldText(claim.text, caseSensitive);
     const searchText = matchView(foldedText);
+    const negation: NegationContext = { text: foldedText };
 
     for (const { phrase, reason, folded } of config.phrases) {
       for (const idx of findOccurrences(searchText, folded)) {
-        if (isNegated(foldedText, idx, negationWindow)) continue;
+        if (isNegated(negation, idx, negationWindow)) continue;
         // `certaintyRequiresTier` holds only valid tier strings, so a claim tier
         // that is not a string in that list (a String object, an array, ...) is never "backed".
         if ((certaintyRequiresTier as readonly unknown[]).includes(tier)) continue;

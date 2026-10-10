@@ -55,9 +55,10 @@ describe('F2: missing negation cues', () => {
     ['finding: non- before "verified dataset"', 'This is a non-verified dataset.', 'PASS'],
     ['finding: non with a space', 'The non guaranteed portion of the rate.', 'PASS'],
     ['finding: zero', 'Zero guarantees apply.', 'PASS'],
-    ['finding: lacks', 'This estimate lacks a guarantee.', 'PASS'],
-    ['finding: lack', 'These figures lack a guarantee of accuracy.', 'PASS'],
-    ["finding: ain't", "Results ain't guaranteed.", 'PASS'],
+    ['given back (review gate): lacks + a', 'This estimate lacks a guarantee.', 'FLAG'],
+    ['finding: lacks, phrase directly after', 'This tool lacks independently verified data for rural counties.', 'PASS'],
+    ['given back (review gate): lack + a', 'These figures lack a guarantee of accuracy.', 'FLAG'],
+    ["given back (review gate): ain't is not a cue", "Results ain't guaranteed.", 'FLAG'],
     ["finding: mustn't", "Results mustn't be treated as guaranteed.", 'PASS'],
     ["finding: needn't", "You needn't treat this as guaranteed.", 'PASS'],
     ['finding: instead of', 'Instead of a guaranteed result, you get an estimate.', 'PASS'],
@@ -120,9 +121,10 @@ describe('F4: idioms that contain a negation word but assert what follows', () =
 
 describe('F5: a long disclaimer in one clause', () => {
   table([
-    ['finding: 49 characters back', 'We are not saying that any of these numbers come with a guarantee.', 'PASS'],
-    ['finding: 48 characters back', 'We do not want you to think that this is in any way a guarantee.', 'PASS'],
-    ['finding: 42 characters back', 'This estimate is not intended to be treated by anyone as a guarantee of savings.', 'PASS'],
+    ['given back (review gate): 49 characters back, phrase after "a"', 'We are not saying that any of these numbers come with a guarantee.', 'FLAG'],
+    ['given back (review gate): 48 characters back, phrase after "a"', 'We do not want you to think that this is in any way a guarantee.', 'FLAG'],
+    ['given back (review gate): 42 characters back, phrase after "a"', 'This estimate is not intended to be treated by anyone as a guarantee of savings.', 'FLAG'],
+    ['finding: far back, phrase after "as"', 'This estimate is not intended to be treated by anyone as guaranteed savings.', 'PASS'],
     ['guard: a negation far back on another verb', 'No credit card required to start your free trial of our independently verified rate tracker.', 'FLAG'],
     ['guard: a subordinate clause after "when"', "Don't settle for guesswork when you can get independently verified data.", 'FLAG'],
     ['documented false fail: "in any way guaranteed", 70 characters back', 'Not a single one of the figures in this whole table is in any way guaranteed.', 'FLAG'],
@@ -134,9 +136,9 @@ describe('F5: a long disclaimer in one clause', () => {
     ['guard: the long reach stops at "but"', 'This is not something we take lightly in any way but a verified dataset.', 'FLAG'],
     ['guard: window of 0 still turns negation off', 'This is not a proprietary dataset.', 'FLAG', { negationWindow: 0 }],
     ['guard: window of 0 turns the long reach off too', `We are not saying that any of these numbers come with a guarantee.`, 'FLAG', { negationWindow: 0 }],
-    ['finding: about 300 characters back, phrase after "a"', `It is not ${'really '.repeat(40)}a proprietary dataset.`, 'PASS'],
-    ['documented: the long reach stops 500 characters back', `It is not ${'really '.repeat(100)}a proprietary dataset.`, 'FLAG'],
-    ['documented miss (new, cost of the long reach): phrase after "a" with an unrelated negation far back', 'We never stop working to make sure each estimate is backed by a proprietary dataset.', 'PASS'],
+    ['finding: about 300 characters back, phrase after "or"', `It is not ${'really '.repeat(40)}reviewed or independently verified.`, 'PASS'],
+    ['documented: the long reach stops 500 characters back', `It is not ${'really '.repeat(100)}reviewed or independently verified.`, 'FLAG'],
+    ['guard: a phrase after "a" does not get the long reach', 'We never stop working to make sure each estimate is backed by a proprietary dataset.', 'FLAG'],
   ]);
 });
 
@@ -144,11 +146,12 @@ describe('F6: clause boundaries skip abbreviations, numbers and legal lists', ()
   table([
     ['finding: U.S.', 'There is no U.S. government guarantee on this account.', 'PASS'],
     ['finding: 99.9%', 'We do not offer a 99.9% uptime guarantee.', 'PASS'],
-    ['finding: 1,000', 'We do not have 1,000 fact-checked records.', 'PASS'],
+    ['given back (review gate): a number right before the phrase blocks the reach', 'We do not have 1,000 fact-checked records.', 'FLAG'],
+    ['finding: a number not right before the phrase', 'We do not track 1,000 accounts or a proprietary dataset.', 'PASS'],
     ['finding: legal list', 'We make no representations, warranties or guarantees of any kind.', 'PASS'],
     ['finding: negated list with an Oxford comma', 'We do not use guaranteed, verified, or proprietary datasets.', 'PASS'],
-    ['finding: i.e.', 'This figure is not final (i.e. guaranteed) until the lender signs.', 'PASS'],
-    ['finding: e.g.', 'This is not a promise (e.g. a guaranteed rate) of any kind.', 'PASS'],
+    ['given back (review gate): i.e. is a boundary', 'This figure is not final (i.e. guaranteed) until the lender signs.', 'FLAG'],
+    ['given back (review gate): e.g. is a boundary', 'This is not a promise (e.g. a guaranteed rate) of any kind.', 'FLAG'],
     ['finding: Dr.', 'This is not reviewed by Dr. Patel or guaranteed by any lender.', 'PASS'],
     ['finding: etc. mid-sentence', 'We offer no refunds, credits, etc. or guaranteed payouts.', 'PASS'],
     ['guard: U.S. then a new sentence', 'We are not in the U.S. Our data is independently verified.', 'FLAG'],
@@ -262,10 +265,10 @@ describe('self-hunt: fresh probes from marketing, help-center, legal and pricing
     ['hit: list past the character window', 'We do not provide tax, legal, or accounting advice, or any guarantee of outcome.', 'PASS'],
     ['guard: imperative "Never" over a list', 'Never pay more for flights, hotels, or guaranteed rental cars.', 'FLAG'],
     ["guard: imperative \"Don't\" over a list", "Don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
-    ['hit: short imperative list stays negated', 'Do not use guaranteed, verified, or proprietary datasets.', 'PASS'],
+    ['given back (review gate): an imperative never heads a list', 'Do not use guaranteed, verified, or proprietary datasets.', 'FLAG'],
     ['guard: nobody beats', 'Nobody beats our guaranteed prices.', 'FLAG'],
     ['guard: no one can beat (main verb after the modal)', 'No one can beat our guaranteed prices.', 'FLAG'],
-    ['hit: zero, phrase three words on', 'There is zero chance of a guaranteed payout.', 'PASS'],
+    ['given back (review gate): zero reaches only a phrase right after it', 'There is zero chance of a guaranteed payout.', 'FLAG'],
     ['guard: Inc. then a new sentence', 'Acme Inc. Our returns are guaranteed.', 'FLAG'],
     ['guard: Inc. mid-sentence', 'Acme Inc. does not offer guaranteed returns.', 'PASS'],
     ['hit: U.S. mid-sentence, phrase after "or"', 'Certain U.S. states do not allow the exclusion of implied warranties or guarantees.', 'PASS'],
@@ -275,4 +278,83 @@ describe('self-hunt: fresh probes from marketing, help-center, legal and pricing
     ['documented miss: "no more X with" asserts what follows', 'No more guesswork with guaranteed fares.', 'PASS'],
     ['documented false fail: adjectives split by a comma without "or"', 'This is not a fact-checked, independently-verified dataset.', 'FLAG'],
   ]);
+});
+
+// Second review (2026-10-10): sentences 0.2.1 reported that an earlier version
+// of these fixes hid. Every one must stay reported (P1, P3), plus the Codex
+// cases and the misses that are wrong in both builds.
+describe('review: overclaims 0.2.1 reported must stay reported', () => {
+  table([
+    ['P1 lack + our', 'Our competitors lack our proprietary dataset.', 'FLAG'],
+    ['P1 lack + the', 'Incumbents lack the independently verified benchmarks we publish every quarter.', 'FLAG'],
+    ['P1 lack + a', 'Other apps lack a proprietary dataset like ours.', 'FLAG'],
+    ['P1 lacking + a', 'Tired of lacking a guaranteed income in retirement?', 'FLAG'],
+    ['P1 unable + second verb', 'Big banks are unable to match our guaranteed savings rate.', 'FLAG'],
+    ['P1 unable + offer a', 'Rivals are unable to offer a guaranteed price-match.', 'FLAG'],
+    ['P1 zero X guaranteed', 'Zero downtime guaranteed.', 'FLAG'],
+    ['P1 zero fees guaranteed', 'Zero fees guaranteed.', 'FLAG'],
+    ['P1 zero hidden fees guaranteed', 'Zero hidden fees guaranteed for life.', 'FLAG'],
+    ['P1 zero wait guaranteed', 'Hate waiting? Zero wait guaranteed.', 'FLAG'],
+    ['P1 zero commission guaranteed', 'Zero commission guaranteed on every trade.', 'FLAG'],
+    ['P1 from zero to', 'Go from zero to independently verified SOC 2 compliance in six weeks.', 'FLAG'],
+    ['P1 instead of + verb', 'Get paid today instead of waiting with guaranteed same-day deposits.', 'FLAG'],
+    ['P1 rather than + our', 'Get answers rather than guesses with our guarantee.', 'FLAG'],
+    ["P3 if it ain't", "If it ain't guaranteed we don't sell it.", 'FLAG'],
+    ['P1 imperative list, "the" after or', "Don't wait, apply today or the guaranteed rate expires Friday.", 'FLAG'],
+    ['P1 imperative list, short', "Don't wait, apply today or the guaranteed rate expires.", 'FLAG'],
+    ['P1 imperative list, "a" after or', "Don't delay, enroll today or a guaranteed spot may go to someone else.", 'FLAG'],
+    ['P1 reach past "when"', "Don't let market swings derail your retirement when you can lock in a guaranteed rate.", 'FLAG'],
+    ['P1 reach past "thanks to"', 'Never worry about a missed payment again thanks to autopay backed by a guarantee.', 'FLAG'],
+    ['P1 reach past "thanks to" (2)', 'No more manual reconciliation for your finance team thanks to matching powered by a proprietary dataset.', 'FLAG'],
+    ['P1 reach past "because" to "been"', "You don't have to take our word for it because every number has been independently verified.", 'FLAG'],
+    ['P1 reach past "because" to "an"', 'Nothing to install on your servers because everything runs on an independently verified platform.', 'FLAG'],
+    ['P1 reach past "since"', 'No credit check needed since every applicant gets a guaranteed approval.', 'FLAG'],
+    ['P1 reach past "because" to "a"', 'Investors no longer need to guess because our model runs on a proprietary database.', 'FLAG'],
+    ['P1 reach past "with"', 'Never overpay for coverage again with a policy that comes with a guarantee.', 'FLAG'],
+    ['P1 reach past "because" (filing)', 'Never miss a deadline because every filing comes with a guarantee.', 'FLAG'],
+    ['P1 reach past "because" (spreadsheets)', 'No spreadsheets required because every number has been fact-checked.', 'FLAG'],
+    ['P1 thousands comma right before the phrase', 'No fees on your first $5,000 guaranteed.', 'FLAG'],
+    ['P1 U.S. then a digit', 'Not available outside the U.S. 100% accurate filings for every state.', 'FLAG'],
+    ['P1 i.e. without a comma', 'No hidden fees i.e. guaranteed transparent pricing.', 'FLAG'],
+    ['P1 e.g. without a comma', 'Not sold in stores e.g. guaranteed lowest price online.', 'FLAG'],
+    ['Codex: U.S. then an opening quote', 'We are not in the U.S. “Guaranteed returns” is our slogan.', 'FLAG'],
+    ['Codex: U.S. then an opening paren', 'We are not in the U.S. (Guaranteed returns are our slogan.)', 'FLAG'],
+    ['Codex: legal list with a small window', 'We make no representations, warranties or guarantees of any kind.', 'PASS', { negationWindow: 10 }],
+    ['guard: no-guarantee compound with the index', 'These are no-guarantee estimates.', 'PASS'],
+    ['documented miss (both builds): contrast with "not"', 'Skip the guesswork, not the guarantee.', 'PASS'],
+    ["documented miss (both builds): can't go wrong with", "You can't go wrong with a guaranteed rate.", 'PASS'],
+    ["documented miss (both builds): don't settle for less than", "Don't settle for less than a guaranteed rate.", 'PASS'],
+    ['documented miss (both builds): rhetorical question', "Who wouldn't want a guaranteed return on their savings?", 'PASS'],
+    ['documented miss (both builds): cannot match our', 'Other tools cannot match our guaranteed rates.', 'PASS'],
+    ['documented false fail (both builds): hard-wrapped line', 'Rates are not\nguaranteed and may change.', 'FLAG'],
+    ['documented false fail (both builds): "no representation is made that"', 'No representation is made that the estimates shown are guaranteed.', 'FLAG'],
+    ['documented false fail (both builds): "dont" without an apostrophe', 'We dont guarantee approval.', 'FLAG'],
+  ]);
+});
+
+// The package has no @types/node; declare only the Node API this file uses.
+declare const process: {
+  cpuUsage(previous?: { user: number; system: number }): { user: number; system: number };
+};
+
+describe('review: cost stays near linear', () => {
+  /** CPU milliseconds `run` takes. */
+  function cpuMs(run: () => void): number {
+    const start = process.cpuUsage();
+    run();
+    const used = process.cpuUsage(start);
+    return (used.user + used.system) / 1000;
+  }
+  const scan = (text: string, options?: ValidateClaimsOptions) => () => {
+    validateClaims([{ id: 'c', text, tier: 'modeled' }], options);
+  };
+
+  it('negationWindow Infinity on a long clause full of cues and matches', () => {
+    expect(cpuMs(scan('zero '.repeat(2000) + 'x guaranteed '.repeat(770), { negationWindow: Infinity }))).toBeLessThan(3000);
+    expect(cpuMs(scan('unable to help '.repeat(4000) + 'guaranteed', { negationWindow: Infinity }))).toBeLessThan(3000);
+  });
+
+  it('a 320 KB clause with "any" before every match, default options', () => {
+    expect(cpuMs(scan('We are not saying ' + 'any guarantee '.repeat(22_857)))).toBeLessThan(3000);
+  });
 });
