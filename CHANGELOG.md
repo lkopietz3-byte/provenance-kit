@@ -26,6 +26,14 @@ directions; see Changed.
   guaranteed savings rate."`, `"Non-stop guaranteed support"` and `"If it
   ain't guaranteed we don't sell it."` are still reported (`ain't` is not a
   cue).
+- **Imperatives, quotes and parentheses.** An imperative list head is still
+  recognized after an opening quote or bracket or after `please`, `just`,
+  `so`, `now` or `hey`; any opening quote or bracket after an abbreviation's
+  period and a space starts a new sentence; and cues other than strong
+  negations never reach across punctuation, so `"Please don't miss our deals on
+  flights, hotels, or guaranteed rentals."`, `"Not available in the U.S.
+  \u201cguaranteed returns\u201d is our slogan."` and `"Our error rate is zero
+  (guaranteed)."` are reported.
 - **Hyphenated multiword cues and idioms.** `"far-from-guaranteed"` negates,
   and `"Not-just guaranteed returns."` and `"Without-question guaranteed
   returns."` are reported, as their spaced forms are.
@@ -83,6 +91,11 @@ directions; see Changed.
 
 ### Documented
 
+- A "Strict mode for CI" note in the README: the measured trade-off (precision
+  0.815 and recall 0.757 on a 137-sentence stress set, versus 0.620 and 0.629
+  for 0.2.1) and `negationWindow: 0`, which turns every negation rule off. A
+  test checks that strict mode reports every phrase occurrence in every
+  verdict-table case.
 - The README's Honest limits list the new word lists, the two longer reaches
   and their 500-character cap, the overclaims still missed (including `"No more
   guesswork with guaranteed fares."` and `"Rivals lack independently verified

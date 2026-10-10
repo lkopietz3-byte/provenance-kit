@@ -157,6 +157,23 @@ and a negated list such as `"We make no representations, warranties or
 guarantees"` stays negated. The negation check can still hide a real
 overclaim; see Honest limits.
 
+#### Strict mode for CI
+
+Negation handling is a heuristic. It trades a few missed overclaims for far
+fewer false alarms on honest disclaimers. On a 137-sentence stress set of real
+marketing, help-center and legal copy (70 overclaims, 67 honest sentences) it
+scores precision 0.815 and recall 0.757, versus 0.620 and 0.629 for 0.2.1.
+A team that would rather review every certainty word can turn all of it off:
+
+```ts
+validateClaims(claims, { negationWindow: 0 });
+```
+
+`negationWindow: 0` disables every negation rule (the negation words, the
+asserting idioms, negated lists and the longer reaches), so every occurrence of
+every phrase is reported. A test checks this on every case in the verdict
+table, honest and overclaiming alike.
+
 Bad input throws instead of being skipped: a sparse claims array, a claim
 that is not an object, an `id` or `text` that is not a string, an option of
 the wrong type, or an unknown option key (a typo such as `certaintyPhrase`)
@@ -292,8 +309,8 @@ Every export from `provenance-kit`, values and types:
   for a negation word. A period or comma inside a number or a known
   abbreviation (`99.9%`, `1,000`, `U.S.`, `Dr.`, `etc.` mid-sentence) is not a
   boundary, with three exceptions: `e.g.` and `i.e.` always are; an
-  abbreviation followed (past any closing quote or bracket) by a capital
-  letter, a digit or an opening quote or bracket is; and a negation never reaches past a number written with a
+  abbreviation followed (past any closing quote or bracket) by a space and
+  then a capital letter, a digit or any opening quote or bracket is; and a negation never reaches past a number written with a
   separator that sits right before the phrase (`"No fees on your first $5,000
   guaranteed."` is flagged). Two narrow cases reach further back, up to 500
   characters but never past a boundary, `and`, `but` or one of `because`,
@@ -308,7 +325,9 @@ Every export from `provenance-kit`, values and types:
   - a negated comma list with at most one word, then `or` or `nor`, then
     optionally `a`, `an` or `any` before the phrase (`"We do not warrant that
     the service will be uninterrupted, error-free, or guaranteed"`). An
-    imperative opener (`Never`, `Don't`, `Do not`) never heads such a list, so
+    imperative opener (`Never`, `Don't`, `Do not`, also after an opening quote
+    or bracket or after `please`, `just`, `so`, `now` or `hey`) never heads such
+    a list, so
     `"Don't wait, apply today or the guaranteed rate expires."` is flagged, and
     the same subordinating words (except `that`) end a negation's hold on the
     list: `"No setup required because each plan includes support, updates, or
@@ -329,9 +348,11 @@ Every export from `provenance-kit`, values and types:
     `oughtn't`) reach any phrase in the window. `ain't` is not on the list:
     `"If it ain't guaranteed we don't sell it."` asserts the guarantee;
   - `zero`, `lack`, `lacks` and `lacking` negate only a phrase that follows
-    directly (`"Zero guarantees apply."`, `"This tool lacks independently
-    verified data."`). `"Zero downtime guaranteed."` and `"Other apps lack a
-    proprietary dataset like ours."` are flagged;
+    directly after a space (`"Zero guarantees apply."`, `"This tool lacks
+    independently verified data."`). `"Zero downtime guaranteed."`, `"Other
+    apps lack a proprietary dataset like ours."` and `"Our error rate is zero
+    (guaranteed)."` are flagged. No cue other than a strong negation reaches
+    across punctuation, parentheses or quotes;
   - `unable` reaches only across `to`, `be`, `been`, `being`, `fully`,
     `currently`, `yet`, `ever`, `always` or `legally` (`"unable to
     guarantee"`), so `"Big banks are unable to match our guaranteed savings

@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_CERTAINTY_PHRASES,
   methodologyPageOutline,
   provenanceBadgeText,
   validateClaims,
@@ -22,8 +23,12 @@ import { FULL_DEFINITIONS, flaggedPhrases } from './helpers.js';
 type Verdict = 'PASS' | 'FLAG';
 type Row = readonly [name: string, text: string, expected: Verdict, options?: ValidateClaimsOptions];
 
+/** Every row registered through `table`, for the strict-mode check at the end. */
+const ALL_ROWS: Row[] = [];
+
 /** One named test per row. */
 function table(rows: readonly Row[]): void {
+  ALL_ROWS.push(...rows);
   for (const [name, text, expected, options] of rows) {
     it(name, () => {
       const flagged = flaggedPhrases(text, options);
@@ -394,4 +399,74 @@ describe('review: final Codex cases and sweep', () => {
     ['sweep guard: "far-from" then a space', 'Rates are far-from guaranteed.', 'PASS'],
     ['sweep guard: hyphenated "no other" right before the phrase', 'No-other guarantee applies.', 'PASS'],
   ]);
+});
+
+// Final Codex pass on 1b0c682.
+describe('review: imperative prefixes, quotes after abbreviations, direct cues and punctuation', () => {
+  table([
+    ['Codex: quoted imperative list head', '\u201cDon\'t miss our deals on flights, hotels, or guaranteed rentals.\u201d', 'FLAG'],
+    ['Codex: "Please" before an imperative list head', "Please don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
+    ['variant: "Just" before an imperative list head', "Just don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
+    ['variant: bracketed imperative list head', "(Don't miss our deals on flights, hotels, or guaranteed rentals.)", 'FLAG'],
+    ['variant: "Hey" before an imperative list head', "Hey don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
+    ['variant: "Now," before an imperative list head', 'Now, never pay more for flights, hotels, or guaranteed rental cars.', 'FLAG'],
+    ['Codex: lower-case quote after U.S.', 'Not available in the U.S. \u201cguaranteed returns\u201d is our slogan.', 'FLAG'],
+    ['variant: straight quote after U.S.', "Not available in the U.S. 'guaranteed returns' is our slogan.", 'FLAG'],
+    ['variant: paren after U.S.', 'Not available in the U.S. (guaranteed returns elsewhere).', 'FLAG'],
+    ['variant: bracket after U.S.', 'Not available in the U.S. [guaranteed returns elsewhere].', 'FLAG'],
+    ['Codex: zero before a parenthetical', 'Our error rate is zero (guaranteed).', 'FLAG'],
+    ['variant: zero before a bracket', 'Our error rate is zero [guaranteed].', 'FLAG'],
+    ['variant: zero before a quote', 'Our error rate is zero "guaranteed".', 'FLAG'],
+    ['variant: lack before a quote', 'Our competitors lack "guaranteed" pricing.', 'FLAG'],
+    ['variant: rather than before a paren', 'Get answers rather than (guaranteed) guesses.', 'FLAG'],
+    ['guard: zero right before the phrase still negates', 'Zero guarantees apply.', 'PASS'],
+    ['guard: U.S. then a lower-case word stays mid-sentence', 'There is no U.S. government guarantee on this account.', 'PASS'],
+  ]);
+});
+
+// Strict mode for CI: `negationWindow: 0` turns every negation rule off (cues,
+// idioms, lists and the longer reach), so every phrase occurrence is reported.
+describe('strict mode: negationWindow 0 reports every phrase occurrence', () => {
+  /** A crude, independent occurrence count: NFKC, lower case, hyphens as spaces, word-start matches. */
+  function crudeCount(text: string, phrases: readonly string[]): number {
+    const fold = (t: string) =>
+      t.normalize('NFKC').toLowerCase().replace(/[-\u2010-\u2013]/g, ' ').replace(/\s+/g, ' ');
+    const hay = fold(text);
+    let total = 0;
+    for (const raw of phrases) {
+      const needle = fold(raw).trim();
+      if (!needle) continue;
+      const wordStart = /[\p{L}\p{N}]/u.test(needle[0] as string);
+      for (let i = hay.indexOf(needle); i !== -1; ) {
+        const before = hay[i - 1];
+        if (!wordStart || before === undefined || !/[\p{L}\p{N}]/u.test(before)) {
+          total++;
+          i = hay.indexOf(needle, i + needle.length);
+        } else {
+          i = hay.indexOf(needle, i + 1);
+        }
+      }
+    }
+    return total;
+  }
+
+  const defaults = DEFAULT_CERTAINTY_PHRASES.map((rule) => rule.phrase);
+  for (const [name, text, , options] of ALL_ROWS) {
+    it(name, () => {
+      const phrases = options?.certaintyPhrases
+        ? options.certaintyPhrases.map((p) => (typeof p === 'string' ? p : p.phrase))
+        : defaults;
+      const strict = flaggedPhrases(text, { ...options, negationWindow: 0 });
+      const lenient = flaggedPhrases(text, options);
+      // Strict reports everything the default reports, and at least every
+      // occurrence the crude count finds (it also folds look-alikes and
+      // invisible characters, so it can find more, never fewer).
+      for (const phrase of new Set(lenient)) {
+        expect(strict.filter((p) => p === phrase).length).toBeGreaterThanOrEqual(
+          lenient.filter((p) => p === phrase).length,
+        );
+      }
+      expect(strict.length).toBeGreaterThanOrEqual(crudeCount(text, phrases));
+    });
+  }
 });

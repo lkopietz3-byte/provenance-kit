@@ -276,7 +276,10 @@ const MAX_LIST_ITEMS = 8;
 const EXTENDED_REACH = 500;
 // A clause part that opens with an imperative negation ("Never pay ...",
 // "Don't miss ...", "Do not use ..."). It never heads a negated list.
-const IMPERATIVE_OPENER = /^ *(?:never|don't|do not)(?![\p{L}\p{N}'])/iu;
+// Opening quotes or brackets and a polite or filler word in front do not hide
+// it: "\u201cDon't miss ...", "Please don't miss ...".
+const IMPERATIVE_OPENER =
+  /^[ "'\p{Ps}\p{Pi}]*(?:(?:please|just|so|now|hey)[ ,]+)*(?:never|don't|do not)(?![\p{L}\p{N}'])/iu;
 
 // Words that put the phrase after them in complement position, where a
 // disclaimer's negation usually lands however long the clause is ("not ... as
@@ -389,9 +392,9 @@ const DECIMAL_POINT = /(?<=\d)\.(?=\d)/g;
 const THOUSANDS_COMMA = /(?<=\d),(?=\d{3}(?!\d))/g;
 // Dotted initialisms ("U.S.", "a.m."): every inner period is kept. The final
 // one is kept too unless a new sentence plausibly starts there (end of text, a
-// line break, or a space, any opening quotes or brackets, and then an
-// upper-case letter or a digit), looking past closing quotes or brackets
-// right after the period ("in the U.S.\u201d Guaranteed ..."). "e.g." and "i.e." are not kept at all: they
+// line break, or a space and then an opening quote or bracket, an upper-case
+// letter or a digit), looking past closing quotes or brackets right after the
+// period ("in the U.S.\u201d Guaranteed ..."). "e.g." and "i.e." are not kept at all: they
 // often introduce a new claim ("No hidden fees i.e. guaranteed transparent
 // pricing").
 const INITIALISM = /(?<![\p{L}\p{N}.])(?:\p{L}\.){2,}/gu;
@@ -402,7 +405,7 @@ const TITLE_ABBREVIATION = /(?<![\p{L}\p{N}])(?:dr|mr|mrs|ms|mx|prof|st|sr|jr|vs
 // Kept unless a new sentence plausibly starts after them (as above).
 const SENTENCE_FINAL_ABBREVIATION = /(?<![\p{L}\p{N}])(?:etc|inc|ltd|co|corp|approx)\./giu;
 // No `i` flag: under `iu`, `\p{Lu}` also matches lower-case letters.
-const NEW_SENTENCE_AFTER = /^["'\p{Pe}\p{Pf}]{0,4}(?:$|\n| ["'\p{Ps}\p{Pi}]{0,4}[\p{Lu}\p{N}])/u;
+const NEW_SENTENCE_AFTER = /^["'\p{Pe}\p{Pf}]{0,4}(?:$|\n| ["'\p{Ps}\p{Pi}\p{Lu}\p{N}])/u;
 
 /** A few UTF-16 units at `index`: all NEW_SENTENCE_AFTER needs, without copying the rest of the text. */
 function peek(text: string, index: number): string {
@@ -535,18 +538,24 @@ function findOccurrences(haystack: string, needle: string): number[] {
 }
 
 /**
- * True if every word in `text` from `from` to the end is in `allowed`, and there
- * are at most MAX_GAP_WORDS of them. Stops at the first word that fails, so a
+ * True if every word in `text` from `from` to the end is in `allowed`, there
+ * are at most MAX_GAP_WORDS of them, and only spaces sit around them: a
+ * parenthesis, quote or other punctuation stops the reach ("Our error rate is
+ * zero (guaranteed)" is reported). Stops at the first word that fails, so a
  * long clause costs no more than a short one.
  */
 function gapFits(text: string, from: number, allowed: ReadonlySet<string>): boolean {
   GAP_WORD.lastIndex = from;
+  let last = from;
   for (let count = 0; ; count++) {
     const word = GAP_WORD.exec(text);
-    if (word === null) return true;
-    if (count >= MAX_GAP_WORDS || !allowed.has(word[0].toLowerCase())) return false;
+    if (word === null) return ONLY_SPACES.test(text.slice(last));
+    if (count >= MAX_GAP_WORDS || !ONLY_SPACES.test(text.slice(last, word.index))) return false;
+    if (!allowed.has(word[0].toLowerCase())) return false;
+    last = word.index + word[0].length;
   }
 }
+const ONLY_SPACES = /^ *$/;
 
 /** The gap words a non-strong cue may reach across (see NEGATION_CUE), or null for a strong cue. */
 function gapWordsFor(cue: RegExpMatchArray, allowSubject: boolean): ReadonlySet<string> | null | undefined {
