@@ -31,8 +31,19 @@
   `src/validate.ts`. Every cue that makes the scanner more lenient gets a guard
   case in `test/verdict-table.test.ts` where the cue appears and the claim is
   still an overclaim.
-- `PROVENANCE_TIERS` and `DEFAULT_CERTAINTY_PHRASES` are frozen
-  (`Object.freeze`, including each phrase entry). Extend them by
+- The copy gate (`scanCopy`, `src/copy-gate.ts`) reuses the folding and the
+  negation machinery of `validate.ts` and must not grow a second negation
+  engine. Its folded text must equal `validateClaims`'s (a differential test
+  checks this, and checks the two flag the same phrases with the gate's
+  quoted exemption off and the long reaches on). Its defaults stay
+  conservative: only the short negation reach, a quoted exemption that needs
+  the phrase alone in a pair of quotation marks on a line that is about words,
+  and a strength word without a check reference is an offense. Positions come
+  from a map back to the original text, not from the folded text. A user
+  `RegExp` is cloned and run safely (empty matches advance by a code point),
+  and a catastrophic pattern is the caller's responsibility.
+- `PROVENANCE_TIERS`, `DEFAULT_CERTAINTY_PHRASES` and `DEFAULT_STRENGTH_RULES` are frozen
+  (`Object.freeze`, including each entry). Extend them by
   spreading into a new array, never by mutating in place.
 - `provenanceBadgeText` and `methodologyPageOutline` return plain strings
   with **no HTML/Markdown escaping** of caller-supplied text. This is a

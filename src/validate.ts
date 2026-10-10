@@ -312,7 +312,7 @@ const WORD_CHAR = /[\p{L}\p{N}]/u;
 const LEADING_WORD_AT = /[\p{L}\p{N}]+/uy;
 
 /** True if the code point `cp` is a letter or digit, the definition INTRAWORD_HYPHEN uses. */
-function isWordCodePoint(cp: number | undefined): boolean {
+export function isWordCodePoint(cp: number | undefined): boolean {
   return cp !== undefined && WORD_CHAR.test(String.fromCodePoint(cp));
 }
 
@@ -323,7 +323,7 @@ function isWordCodePoint(cp: number | undefined): boolean {
  * a supplementary-plane letter would never look like a letter. A lone
  * (unpaired) surrogate is returned as itself and is not a word character.
  */
-function codePointBefore(text: string, index: number): number | undefined {
+export function codePointBefore(text: string, index: number): number | undefined {
   if (index <= 0) return undefined;
   const unit = text.charCodeAt(index - 1);
   if (unit >= 0xdc00 && unit <= 0xdfff && index >= 2) {
@@ -340,9 +340,9 @@ function codePointBefore(text: string, index: number): number | undefined {
 // joiner, invisible math operators, variation selectors, Hangul fillers, the
 // byte-order mark and tag characters. A hand-written range list missed the
 // isolates and U+061C, so "independently\u2066 verified" evaded the scan.
-const INVISIBLE_CHARS = /\p{Default_Ignorable_Code_Point}/gu;
+export const INVISIBLE_CHARS = /\p{Default_Ignorable_Code_Point}/gu;
 // Typographic apostrophes, folded to ' so contractions are recognized.
-const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
+export const CURLY_APOSTROPHES = /[\u2018\u2019\u02bc\u2032]/g;
 
 // Cyrillic and Greek letters that look like Latin letters. NFKC does not fold
 // them, so "gu\u0430ranteed" (Cyrillic a) evaded the scan. Each is read as its
@@ -373,7 +373,7 @@ const ASCII_LETTER = /[A-Za-z]/;
 const GREEK_OR_CYRILLIC = /[\u0370-\u052f]/;
 
 /** Read Cyrillic and Greek look-alikes as Latin inside words that also contain ASCII Latin letters. */
-function foldConfusables(text: string): string {
+export function foldConfusables(text: string): string {
   if (!GREEK_OR_CYRILLIC.test(text)) return text;
   return text.replace(LETTER_RUN, (word) =>
     ASCII_LETTER.test(word) ? word.replace(CONFUSABLE_CHAR, (ch) => CONFUSABLE_TO_LATIN[ch] ?? ch) : word,
@@ -385,8 +385,8 @@ function foldConfusables(text: string): string {
 // does not see a boundary there; `matchView` swaps them back so matching is
 // unchanged. NFKC maps both placeholders to "." and ",", so neither can be
 // left in the text by the time this runs.
-const KEPT_PERIOD = '\u2024'; // ONE DOT LEADER
-const KEPT_COMMA = '\ufe50'; // SMALL COMMA
+export const KEPT_PERIOD = '\u2024'; // ONE DOT LEADER
+export const KEPT_COMMA = '\ufe50'; // SMALL COMMA
 // A decimal point and a thousands separator: "99.9%", "1,000". A negation
 // still does not reach past such a number right before the phrase (see
 // `pastNumber`).
@@ -419,7 +419,7 @@ function peek(text: string, index: number): string {
  * before lower-casing, because "U.S. Our data" and "U.S. government" differ
  * only in case. Every replacement is one UTF-16 unit for one.
  */
-function markNonBoundaryPunctuation(text: string): string {
+export function markNonBoundaryPunctuation(text: string): string {
   if (!text.includes('.') && !text.includes(',')) return text;
   return text
     .replace(DECIMAL_POINT, KEPT_PERIOD)
@@ -451,8 +451,8 @@ const INTRAWORD_EN_DASH = /(?<=[\p{L}\p{N}])\u2013(?=[\p{L}\p{N}])/gu;
 // Any run of whitespace (JS `\s` plus U+0085, which `\s` omits) collapses to
 // one character. A run that contains a line break becomes '\n' instead of ' ',
 // so the negation check can still see where a line ended (see `foldText`).
-const WHITESPACE_RUN = /[\s\u0085]+/g;
-const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
+export const WHITESPACE_RUN = /[\s\u0085]+/g;
+export const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
 // A negation only reaches a phrase when none of these sits between them: the
 // clause-ending punctuation `, ; . : ! ?`, an em or en dash, or a line break
 // (already folded to '\n'). Periods and commas inside numbers and known
@@ -478,7 +478,7 @@ const CLAUSE_BOUNDARY = /[,;.:!?\u2014\u2013\n]/;
  * space, one character for one character, so positions are identical in both
  * views.
  */
-function foldText(text: string, caseSensitive: boolean): string {
+export function foldText(text: string, caseSensitive: boolean): string {
   const folded = markNonBoundaryPunctuation(
     foldConfusables(
       text
@@ -495,7 +495,7 @@ function foldText(text: string, caseSensitive: boolean): string {
  * spaces, kept periods and commas are restored, and a hyphen or en dash between
  * two letters or digits reads as a space.
  */
-function matchView(folded: string): string {
+export function matchView(folded: string): string {
   return folded
     .replaceAll('\n', ' ')
     .replaceAll(KEPT_PERIOD, '.')
@@ -519,7 +519,7 @@ function matchView(folded: string): string {
  * `indexOf('', start)` returns `start`, so without it the scan below would
  * never advance.
  */
-function findOccurrences(haystack: string, needle: string): number[] {
+export function findOccurrences(haystack: string, needle: string): number[] {
   if (!needle) return [];
   const needsLeftBoundary = isWordCodePoint(needle.codePointAt(0));
   const indices: number[] = [];
@@ -635,7 +635,7 @@ function pastNumber(text: string, matchIndex: number, floor: number): number {
  * reach in the window (a boundary, `and` / `but`), and the positions that also
  * end the longer reach (those plus each FAR_REACH_STOP_WORD).
  */
-class NegationIndex {
+export class NegationIndex {
   readonly text: string;
   readonly blanked: string;
   readonly strongCues: number[] = [];
@@ -689,7 +689,7 @@ function lastBefore(list: readonly number[], limit: number): number | undefined 
 }
 
 /** Per-claim state for `isNegated`: the folded text and its lazily built index. */
-interface NegationContext {
+export interface NegationContext {
   text: string;
   index?: NegationIndex;
 }
@@ -709,9 +709,16 @@ const TAIL_SCAN = 160;
  * boundary (see CLAUSE_BOUNDARY) or `and` / `but` between the cue and the
  * phrase ends it, so "not guesses, independently verified" is still an
  * offense. `ctx.text` must be the folded string (line breaks as '\n') the
- * match index was computed on.
+ * match index was computed on. `extendedReach` (default true, what
+ * `validateClaims` uses) enables the two longer reaches described at the
+ * option `negationWindow`; the copy gate turns it off by default.
  */
-function isNegated(ctx: NegationContext, matchIndex: number, windowSize: number): boolean {
+export function isNegated(
+  ctx: NegationContext,
+  matchIndex: number,
+  windowSize: number,
+  extendedReach = true,
+): boolean {
   const text = ctx.text;
   const floor = pastNumber(text, matchIndex, windowStart(text, matchIndex, windowSize));
   const before = text.slice(Math.max(floor, matchIndex - 10), matchIndex);
@@ -725,7 +732,7 @@ function isNegated(ctx: NegationContext, matchIndex: number, windowSize: number)
   const tailStart = windowStart(text, matchIndex, Math.min(matchIndex - Math.max(floor, (stop ?? -1) + 1), TAIL_SCAN));
   if (hasGoverningCue(index.blanked.slice(tailStart, matchIndex), true)) return true;
 
-  if (windowSize === 0) return false;
+  if (windowSize === 0 || !extendedReach) return false;
   const reachFloor = pastNumber(text, matchIndex, windowStart(text, matchIndex, Math.max(windowSize, EXTENDED_REACH)));
   if (isNegatedList(index, matchIndex, reachFloor)) return true;
 

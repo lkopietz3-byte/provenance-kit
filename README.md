@@ -244,6 +244,179 @@ your definitions, plus `TODO`-marked sections for the parts that are
 genuinely domain-specific (what your product doesn't do, your correction
 log, your FAQ) — this library can't honestly know those for you.
 
+## Copy gate
+
+`validateClaims` checks claims you have already extracted and tiered. The copy
+gate is the other half of a build-failing copy check: it scans the text you ship
+(page files, strings, whatever your test reads) against a ledger of wording you
+have banned or retracted, and checks that required statements are present. It
+is a text lint. It never says a sentence is true, and a clean result only means
+no rule matched.
+
+```ts
+import { readFileSync } from 'node:fs';
+import { expect, test } from 'vitest';
+import {
+  DEFAULT_STRENGTH_RULES,
+  assertCopyClean,
+  plantedViolationsFail,
+  type CopyRule,
+} from 'provenance-kit';
+
+const ledger: CopyRule[] = [
+  {
+    id: 'no-guaranteed-returns',
+    kind: 'banned',
+    pattern: 'guaranteed returns',
+    reason: 'No return is guaranteed.',
+    replacement: 'estimated returns',
+  },
+  {
+    id: 'uptime-retracted',
+    kind: 'retracted',
+    pattern: /99\.99\s*% uptime/i,
+    reason: 'Retracted: measured uptime was lower.',
+    replacement: '99.9% uptime target',
+    sample: 'We deliver 99.99% uptime.', // a RegExp rule needs a planted sample
+  },
+  ...DEFAULT_STRENGTH_RULES, // "verified", "proof", "atomic", "accuracy", ...
+];
+
+test('every rule catches its own planted sample', () => {
+  expect(plantedViolationsFail(ledger).ok).toBe(true);
+});
+
+test('shipped copy has no banned or retracted wording', () => {
+  const sources = ['index.html', 'pricing.html'].map((id) => ({
+    id,
+    text: readFileSync(`dist/${id}`, 'utf8'),
+  }));
+  // Throws a CopyGateError listing every offense (file:line:column, rule, reason,
+  // replacement) and every missing statement, so the build fails.
+  assertCopyClean(sources, ledger, {
+    required: [{ id: 'disclaimer', phrase: 'Estimates are not guarantees' }],
+    checkReference: [/\[\[check:[a-z0-9-]+\]\]/i, '/methodology'],
+  });
+});
+```
+
+`scanCopy(sources, rules, options?)` returns the same information without
+throwing:
+
+```ts
+const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options);
+// offenses: [{ sourceId, ruleId, kind, line, column, match, reason, replacement }]
+// missing:  [{ id, phrase, sourceIds }]   (sourceIds = the sources that lack it)
+```
+
+### Exact rules
+
+- **Sources.** `[{ id, text }]`, read by you. The package never touches a file
+  or the network. Ids must be unique. Each text is scanned on its own.
+- **Folding.** Text and string patterns go through the same folding as
+  `validateClaims`: NFKC, invisible and zero-width characters removed, curly
+  apostrophes straightened, the fixed list of Cyrillic and Greek look-alike
+  letters read as Latin inside Latin words, whitespace runs (and line breaks)
+  read as one space, a hyphen or en dash between two letters or digits read as
+  a space, and case folded unless `caseSensitive`. So `ｇｕａｒａｎｔｅｅｄ`, `gu\u0430ranteed`,
+  `guaran\u200bteed`, NFD text and `guaranteed\nreturns` all match `guaranteed returns`.
+- **String patterns** match from a word boundary on the left; the end is not
+  checked, so `guarantee` also matches `guarantees` and `guaranteed`. They are
+  matched in linear time. A blank pattern throws; it would match nothing.
+- **RegExp patterns** are cloned (your regex is never run and its `lastIndex`
+  is never touched), made global and non-sticky, and run on the folded text with
+  case kept, so write the `i` flag yourself. In that text every whitespace run,
+  line breaks included, is one space, `\u2010` to `\u2012` and an en dash between
+  letters read as `-`, and `^` and `$` mean the start and end of the whole
+  source. Empty matches are skipped and the scan steps past them by one code
+  point under `u` and `v`, so it always ends. A pattern that backtracks
+  catastrophically will hang the scan; that is your responsibility, as it is
+  with any regex.
+- **Positions.** `line` and `column` are 1-based and describe the START of the
+  match in your original text. Lines end at LF, CRLF or CR. `column` counts
+  Unicode code points, so an emoji is one column and a combining mark is its own.
+  `match` is the original text, including any hidden or look-alike characters.
+  Offenses come in source order, then position, then rule order. Two rules that
+  match the same words each report.
+- **Negated use** (`exemptNegated`, default `true`) is decided by the same
+  clause-bounded negation logic as `validateClaims`: a cue such as `not`,
+  `never`, `no`, `cannot` or `without` earlier in the same clause, within
+  `negationWindow` characters (default 40), and not across `and`, `but` or a
+  clause boundary. Strict scanning is the default: the two longer reaches
+  `validateClaims` has (a negated comma list, and a phrase right after "as",
+  "any", "or", "nor", "be" or "been") are off unless you pass
+  `extendedNegation: true`, and `negationWindow: 0` turns the exemption off, so
+  every match is an offense.
+- **Quoted use** (`exemptQuoted`, default `true`) is a mention, not a use. A
+  match is exempt only when ALL of these hold: it sits inside one pair of
+  quotation marks on one line (straight `"` paired by parity, or the curly,
+  German, guillemet and corner-bracket pairs; single quotes and backticks are
+  not quotation marks here); the quotation starts with the phrase (only
+  punctuation before it, and at most 32 characters after it); the quotation
+  reads as a list entry or a named word (it starts the line, follows a colon,
+  comma or similar mark, follows a word such as "phrase" or "banned", or is the
+  second item after "and" or "or"); and the same line contains a word that says
+  the line is about words (`word`, `term`, `phrase`, `label`, `wording`,
+  `avoid`, `banned`, `retired`, `retracted`, `prohibited`, `forbidden`). A
+  quotation that does not fit, including `Join our "guaranteed returns" plan`
+  and `He said "we got guaranteed returns"`, stays an offense.
+- **Strength words** (`kind: 'strength'`) are wording about how well something
+  was checked. Each match is an offense unless a check reference
+  (`options.checkReference`: a phrase, a `RegExp` such as a methodology link or a
+  `[[check:id]]` token, or an array of them) appears within `checkWindow`
+  characters (default 120) before or after it. With no `checkReference`
+  configured, every strength match is an offense. `DEFAULT_STRENGTH_RULES` holds
+  `verified`, `proof`, `proven`, `atomic`, `accuracy`, `accurate`, `audited`,
+  `certified`, `validated`, `deterministic` and `exact`; it is a starter list.
+  Extend it by spreading: `[...DEFAULT_STRENGTH_RULES, myRule]`. A string
+  pattern matches by prefix, so `proof` also matches `proofread`; use a
+  `RegExp` such as `/\bproof\b/i` for a hard end.
+- **Required statements** (`options.required`, `[{ id, phrase, sourceIds? }]`)
+  must appear in every source, or in the listed `sourceIds` only. The phrase is
+  folded like a string pattern. Presence is all that is checked: the statement
+  may be negated or quoted and still counts. A scoped id that is not among the
+  sources scanned is reported as missing.
+- **Errors.** Bad `sources`, `rules` or `options` throw `TypeError` or
+  `RangeError` before anything is scanned: a hole in an array, an unknown key (a
+  typo such as `exemptNegate`), a duplicate id, a blank id, reason, pattern or
+  required phrase, a wrong `kind`, a value that is not a real `RegExp`. Caller
+  values are read once and copied.
+- **Self-test.** `plantedViolationsFail(rules, options?)` plants each rule's
+  `sample` (a string pattern plants itself) in its own text and reports which
+  rules did not catch it. A rule with no way to plant is reported as unproven,
+  not as passing. It uses the same options, so a negation window or a check
+  reference that blinds a rule shows up.
+
+### Copy gate limits
+
+- **Text only.** It reads the text you pass. It does not read markup (an
+  entity such as `&nbsp;` or a tag inside a phrase hides it; strip and decode
+  first), images, PDFs or rendered pages, and it never decides that a sentence
+  is true or false. A clean result is not an honest page.
+- **English negation only.** The negation cues are the English ones
+  `validateClaims` has. A Spanish `nunca` or `sin` is not a cue, so honest
+  Spanish disclaimers are reported (a false offense, which is the safe
+  direction). Look-alike folding covers a fixed list of Cyrillic and Greek
+  letters only.
+- **Negation can still hide a real claim**, as in `validateClaims`: `Don't miss
+  our guaranteed returns` and `We are not afraid to offer guaranteed returns`
+  pass, because the negation word sits in the same clause. Review rules that
+  matter with `negationWindow: 0`, or set `exemptNegated: false` on them.
+- **The quoted exemption can be fooled** by a line that talks about words and
+  also uses the phrase in quotation marks as a slogan (`Our terms: "guarantee"`).
+  Set `exemptQuoted: false` on a rule where that matters.
+- **Known misses.** A word hyphenated at a line break (`risk-\nfree`) is not
+  rejoined; a zero-width space between two words glues them (`guaranteed\u200breturns`
+  reads as `guaranteedreturns`, because the same removal finds `guaran\u200bteed`);
+  letters spaced out (`g u a r a n t e e d`) and phrases reworded
+  (`returns we promise`) are not seen.
+- **Known false offenses.** An unquoted glossary of banned words, a quotation
+  after a verb the gate does not know (`we removed "99.99% uptime"`), single
+  quotes, backticks, and a negation in another language are reported.
+- **No output limits.** There is no cap on offenses per source, and an empty
+  `sources` array returns an empty result (`sourcesScanned` is `0`, so you can
+  fail on that yourself).
+
 ## API surface
 
 Every export from `provenance-kit`, values and types:
@@ -263,6 +436,15 @@ Every export from `provenance-kit`, values and types:
 | `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }` — what `validateClaims` accepts |
 | `ValidateClaimsOptions` | Type: `{ certaintyPhrases?, certaintyRequiresTier?, requireSourceRefForTiers?, caseSensitive?, negationWindow? }` |
 | `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input`, claims or options (including a hole in a sparse array, a non-string `id` or `text`, and an unknown option key), and `RangeError` for an out-of-range option. |
+| `CopyRule`, `CopyRuleKind` | Types: one ledger entry `{ id, pattern, reason, replacement?, kind, exemptNegated?, exemptQuoted?, sample? }` and its kind, `'banned' \| 'retracted' \| 'strength'` |
+| `CopySource`, `RequiredStatement`, `ScanCopyOptions` | Types: `{ id, text }`; `{ id, phrase, sourceIds? }`; `{ required?, checkReference?, checkWindow?, caseSensitive?, negationWindow?, extendedNegation? }` |
+| `CopyOffense`, `MissingStatement`, `CopyScanResult` | Types: `{ sourceId, ruleId, kind, line, column, match, reason, replacement }`; `{ id, phrase, sourceIds }`; `{ offenses, missing, sourcesScanned }` |
+| `DEFAULT_STRENGTH_RULES` | Value: 11 starter strength-word rules. Frozen (including each entry). |
+| `scanCopy(sources, rules, options?)` | Function: the copy gate, returns `CopyScanResult`. Throws `TypeError` or `RangeError` for malformed input. |
+| `assertCopyClean(sources, rules, options?)` | Function: like `scanCopy`, but throws `CopyGateError` when there is any offense or missing statement. |
+| `CopyGateError` | Value: `Error` subclass thrown by `assertCopyClean`, with `offenses` and `missing`. |
+| `PlantedViolationReport`, `PlantedViolationResult` | Types: `{ ok, results }` and `{ ruleId, planted, caught }` |
+| `plantedViolationsFail(rules, options?)` | Function: plants each rule's sample and reports which rules miss it. |
 | `ProvenanceBadgeTextOptions` | Type: `{ includeShortDescription? }` |
 | `provenanceBadgeText(tier, definitions, options?)` | Function: pure badge-label lookup. Throws `Error` if the tier has no own definition, `TypeError` for a non-string tier, a malformed definition or an unknown option key, `RangeError` for a visibly blank label. |
 | `MethodologyPageOutlineOptions` | Type: `{ title?, intro?, tiers?, productName? }` |

@@ -1,9 +1,14 @@
 {
   "provenance-kit": [
+    "CopyGateError",
     "DEFAULT_CERTAINTY_PHRASES",
+    "DEFAULT_STRENGTH_RULES",
     "PROVENANCE_TIERS",
+    "assertCopyClean",
     "methodologyPageOutline",
+    "plantedViolationsFail",
     "provenanceBadgeText",
+    "scanCopy",
     "validateClaims"
   ]
 }

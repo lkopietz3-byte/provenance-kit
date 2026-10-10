@@ -6,9 +6,39 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 Fixes from a verdict hunt on real marketing, help-center, legal and pricing
-copy. The exports and the shape of `ClaimOffense` are unchanged. Some inputs
+copy. The `validateClaims` exports and the shape of `ClaimOffense` are unchanged. Some inputs
 that used to be accepted now throw, and some verdicts change in both
 directions; see Changed.
+
+### Added
+
+- **Copy gate.** `scanCopy(sources, rules, options?)` scans text you already
+  read (pages, strings, files) against a ledger of `banned`, `retracted` and
+  `strength` rules and checks that required statements are present. Offenses
+  carry the source id, rule id, kind, 1-based line and column (in code points)
+  in the original text, the matched text, the reason and the replacement.
+  `missing` lists, per required statement, the sources that lack it. Text is
+  folded like `validateClaims` text (NFKC, invisible characters, look-alike
+  letters, case, hyphens, line breaks). A match that is negated in its own
+  clause or is the whole content of a quoted mention is exempt unless the rule
+  turns that off. Strength words need a check reference nearby or they are
+  offenses. The default is strict: only the short negation reach is used (the
+  two longer reaches are opt-in with `extendedNegation`), and `negationWindow:
+  0` turns the negation exemption off.
+- `DEFAULT_STRENGTH_RULES` (frozen starter list: verified, proof, proven,
+  atomic, accuracy, accurate, audited, certified, validated, deterministic,
+  exact), `assertCopyClean(...)` (throws `CopyGateError` listing every
+  offense, for tests and CI) and `plantedViolationsFail(rules)` (plants each
+  rule's own sample and reports the rules that miss it).
+- New exports: `scanCopy`, `assertCopyClean`, `plantedViolationsFail`,
+  `CopyGateError`, `DEFAULT_STRENGTH_RULES`, and the types `CopyRule`,
+  `CopyRuleKind`, `CopySource`, `RequiredStatement`, `ScanCopyOptions`,
+  `CopyOffense`, `MissingStatement`, `CopyScanResult`,
+  `PlantedViolationResult` and `PlantedViolationReport`.
+- `validateClaims` is unchanged. Internally, `src/validate.ts` now exports its
+  folding and negation helpers to the gate (not part of the public API), and
+  `isNegated` takes an optional `extendedReach` argument that defaults to the
+  old behavior.
 
 ### Fixed
 
