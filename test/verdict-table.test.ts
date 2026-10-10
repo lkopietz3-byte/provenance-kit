@@ -255,7 +255,7 @@ describe('F10: default phrase list coverage (judgment call, see README)', () => 
 
 describe('self-hunt: fresh probes from marketing, help-center, legal and pricing copy', () => {
   table([
-    ['hit: a zero- compound before the phrase', 'Zero-fee guaranteed transfers.', 'FLAG'],
+    ['guard: a zero- compound before the phrase (the new zero cue must not hide it)', 'Zero-fee guaranteed transfers.', 'FLAG'],
     ['hit: nothing else compares', 'Nothing else compares to a guaranteed rate.', 'FLAG'],
     ['hit: legal list with a long head', 'We do not warrant that the service will be uninterrupted, error-free, or guaranteed to meet your needs.', 'PASS'],
     ['hit: subject negation heading a list', 'Nothing in this article constitutes a recommendation, offer, or guarantee of any kind.', 'PASS'],
