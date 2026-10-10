@@ -147,17 +147,20 @@ validateClaims(claims, {
 Properly negated phrases are not flagged — `"these figures are not a
 proprietary dataset"` passes clean, because the scanner checks the text
 immediately before each match, back to the start of its clause, for a
-negation word (`not`, `isn't`, `without`, `never`, …). A clause boundary
-(`, ; . : ! ?`, an em or en dash, or a line break) or the word `and` or `but`
-between the negation and the phrase ends the negation, so `"These are not
-guesses, they are independently verified."` and `"It is not a guess but a
-verified dataset."` are flagged. The negation check can still hide a real
+negation word (`not`, `isn't`, `without`, `never`, `no one`, `unable`, …). A
+clause boundary (`, ; . : ! ?`, an em or en dash, or a line break) or the word
+`and` or `but` between the negation and the phrase ends the negation, so
+`"These are not guesses, they are independently verified."` and `"It is not a
+guess but a verified dataset."` are flagged. A period or comma inside a number
+or a known abbreviation (`99.9%`, `1,000`, `U.S.`, `e.g.`) is not a boundary,
+and a negated list such as `"We make no representations, warranties or
+guarantees"` stays negated. The negation check can still hide a real
 overclaim; see Honest limits.
 
 Bad input throws instead of being skipped: a sparse claims array, a claim
-that is not an object, an `id` or `text` that is not a string, or an option
-of the wrong type all raise `TypeError` or `RangeError` before any claim is
-scanned. A claim with a wrong `tier` is not an error; it is reported as an
+that is not an object, an `id` or `text` that is not a string, an option of
+the wrong type, or an unknown option key (a typo such as `certaintyPhrase`)
+all raise `TypeError` or `RangeError` before any claim is scanned. A claim with a wrong `tier` is not an error; it is reported as an
 `unknown_tier` offense.
 
 Each offense is structured, not a boolean. `message` is safe to print: control
@@ -242,11 +245,11 @@ Every export from `provenance-kit`, values and types:
 | `ClaimOffense` | Type: one flagged problem — `{ claimId, claimText, phrase, reason, message, tier }` |
 | `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }` — what `validateClaims` accepts |
 | `ValidateClaimsOptions` | Type: `{ certaintyPhrases?, certaintyRequiresTier?, requireSourceRefForTiers?, caseSensitive?, negationWindow? }` |
-| `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input`, claims or options (including a hole in a sparse array and a non-string `id` or `text`), and `RangeError` for an out-of-range option. |
+| `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input`, claims or options (including a hole in a sparse array, a non-string `id` or `text`, and an unknown option key), and `RangeError` for an out-of-range option. |
 | `ProvenanceBadgeTextOptions` | Type: `{ includeShortDescription? }` |
-| `provenanceBadgeText(tier, definitions, options?)` | Function: pure badge-label lookup. Throws `Error` if the tier has no own definition, `TypeError` for a non-string tier or a malformed definition, `RangeError` for a visibly blank label. |
+| `provenanceBadgeText(tier, definitions, options?)` | Function: pure badge-label lookup. Throws `Error` if the tier has no own definition, `TypeError` for a non-string tier, a malformed definition or an unknown option key, `RangeError` for a visibly blank label. |
 | `MethodologyPageOutlineOptions` | Type: `{ title?, intro?, tiers?, productName? }` |
-| `methodologyPageOutline(definitions, options?)` | Function: Markdown methodology-page scaffold. A missing tier definition becomes a `TODO` line, not a throw. `definitions` and `options` must be plain objects, `tiers` a dense array of strings (`TypeError` otherwise), and a visibly blank label is a `RangeError`. |
+| `methodologyPageOutline(definitions, options?)` | Function: Markdown methodology-page scaffold. A missing tier definition becomes a `TODO` line, not a throw. `definitions` and `options` must be plain objects with known keys, `tiers` a dense array of strings (`TypeError` otherwise), and a visibly blank label, `title`, `intro` or `productName` is a `RangeError`. |
 
 ## When not to use this
 
@@ -272,53 +275,104 @@ Every export from `provenance-kit`, values and types:
 - **The certainty-phrase list is a starting point, not a taxonomy.**
   `DEFAULT_CERTAINTY_PHRASES` has 11 generic entries.
   It will not catch a phrase it doesn't know about (any of "confirmed
-  accurate," "clinically proven," "audited," "third-party tested" — none
-  of these are in the default list). Extend it for your product; a stale
-  or narrow list is a false sense of coverage, not a lint.
+  accurate," "clinically proven," "audited," "third-party tested," "100
+  percent accurate": none of these are in the default list). Extend it for
+  your product; a stale or narrow list is a false sense of coverage, not a
+  lint. Plain `"verified"`, `"audited"`, `"proven"` and `"100 percent
+  accurate"` were left out of the default on purpose: a bare `"verified"` would
+  report a second offense next to every `"independently verified"` and
+  `"verified dataset"` and flag account-status copy such as "Email verified";
+  `"proven"` would match the start of "provenance" (the end of a match is not
+  boundary-checked, see below); `"audited"` and `"100 percent accurate"` are
+  reasonable additions for most products, so add them with your own list.
 - **Negation is a character window that stops at a clause boundary, not a
   parser, and it can hide a real overclaim.** The scanner looks at up to
   `negationWindow` characters (default 40) immediately before a match, cut off
   at the nearest `, ; . : ! ?`, em dash, en dash, line break, `and` or `but`,
-  for a negation word. That fixes the classic false negative (`"These are not
-  guesses, they are independently verified."` is flagged), but the cut is
-  punctuation and two conjunctions, not grammar. It fails in both directions.
+  for a negation word. A period or comma inside a number or a known
+  abbreviation (`99.9%`, `1,000`, `U.S.`, `e.g.`, `i.e.`, `Dr.`, `etc.`
+  mid-sentence) is not a boundary. Two narrow cases reach further back, up to
+  500 characters but never past a boundary: a phrase right after `a`, `an`,
+  `as`, `any`, `or`, `nor`, `be` or `been` (`"We are not saying that any of
+  these numbers come with a guarantee."`), and a negated comma list ending in
+  `or` or `nor` (`"We do not warrant that the service will be uninterrupted,
+  error-free, or guaranteed"`). That fixes the classic false negative (`"These
+  are not guesses, they are independently verified."` is flagged), but the cut
+  is punctuation, two conjunctions and a few word lists, not grammar. It fails
+  in both directions.
+
+  The word lists are small, explicit and English-only:
+  - strong negations (`not`, `never`, `no`, `none`, `nothing`, `nor`,
+    `neither`, `without`, `hardly`, `barely`, `far from`, `cannot` and every
+    `n't` contraction, including `ain't`, `mustn't` and `needn't`) reach any
+    phrase in the window;
+  - `unable`, `lack`, `lacks`, `lacking`, `zero`, `instead of` and `rather
+    than` reach a phrase at most three words later (`"unable to guarantee"`, but
+    not `"Instead of guessing we give you independently verified data"`);
+  - `no one` and `nobody` negate a phrase only across auxiliary words (`"No one
+    can guarantee"`, `"Nobody has independently verified"`), not across a main
+    verb (`"No one disputes this independently verified figure"` is flagged);
+  - `non-` or `un-` negates only when attached to the phrase itself
+    (`"non-guaranteed"`; `"Non-stop guaranteed support"` is flagged).
 
   False negatives (a real overclaim is NOT reported; this is the direction that
   matters for a lint). A negation word in the same clause still suppresses a
   phrase it does not govern. On a `modeled` claim each of these is missed:
-  - `"Don't miss our independently verified rates."` and `"You can't beat our
-    proprietary dataset."` (the negation belongs to a verb such as "miss" or
-    "beat", not to the phrase);
+  - `"Don't miss our independently verified rates."`, `"You can't beat our
+    proprietary dataset."` and `"Never miss a guaranteed fare drop."` (the
+    negation belongs to a verb such as "miss" or "beat", not to the phrase);
   - `"Never overpay with our guaranteed lowest price."`, `"No signup needed for
-    our proprietary dataset"`, `"No hidden fees guaranteed"` and `"There is no
-    better proprietary database"` (a negation word with the phrase further on
-    in the same clause);
+    our proprietary dataset"`, `"No more guesswork with guaranteed fares."`,
+    `"No hidden fees guaranteed"`, `"There is no better proprietary database"`
+    and `"Rivals lack independently verified data."` (a negation word with the
+    phrase further on in the same clause);
+  - `"We never stop working to make sure each estimate is backed by a
+    proprietary dataset."` (the longer reach after `a` also hides an unrelated
+    negation);
   - `"Not estimated (verified)"`.
 
-  These four used to be missed too and are now reported: `"No fees and
-  guaranteed returns."` and `"It is not a guess but a verified dataset."` (`and`
-  and `but` end a negation), `"Nothing but independently verified sources."` and
-  `"Without question independently verified."` (idioms that assert what follows).
-  `"No doubt"`, `"no question"`, `"no wonder"`, `"no one"`, `"not only"`, `"not
-  just"`, `"not merely"` and `"not simply"` are special-cased the same way. The
-  idiom list is short and is not an exhaustive list of English.
+  These used to be missed and are now reported: `"No fees and guaranteed
+  returns."` and `"It is not a guess but a verified dataset."` (`and` and `but`
+  end a negation), and a set of idioms that contain a negation word but assert
+  what follows: `"no doubt"`, `"no question"`, `"no wonder"`, `"nothing but"`,
+  `"without question"`, `"without (a) doubt"`, `"not only"`, `"not just"`,
+  `"not merely"`, `"not simply"`, `"nothing (else) beats / compares / comes
+  close / tops / matches / rivals"`, `"no other"` followed by another word,
+  `"(there is) no denying"`, `"not to mention"`, `"why not"`, `"not once has"`
+  and hyphenated `"no-"` or `"zero-"` compounds on another word (`"No-risk
+  guaranteed trial"`). The idiom list is short and is not an exhaustive list of
+  English.
 
   False positives (noise: something negated is reported):
-  - a comma or period inside a number counts as a boundary, so `"We do not
-    have 1,000 fact-checked records"` is flagged;
-  - a negation that governs a list is cut at the first comma, so `"We do not
-    use guaranteed, verified, or proprietary datasets"` is flagged for the
-    later items;
+  - a negation over a list is cut at a comma that is not followed by the
+    `or` / `nor` list shape, so `"This is not a fact-checked,
+    independently-verified dataset."` is flagged;
   - the same happens at `and`: `"We do not use guaranteed and verified
     datasets."` is flagged for "verified dataset". `or` and `nor` are not
     boundaries, so `"not guaranteed or independently verified"` is clean;
+  - a phrase that is not right after one of the words above, more than 40
+    characters after its negation, is flagged: `"Not a single one of the
+    figures in this whole table is in any way guaranteed."`;
+  - an abbreviation the scanner does not know, or one that ends a sentence and
+    is followed by a lower-case word, still counts as a boundary;
   - a claim hard-wrapped across lines (`"not\nverified"`) is cut at the line
     break; keep each claim on one line or unwrap it first.
 
   Narrowing `negationWindow` shrinks how far back a negation reaches inside a
-  clause; `0` turns negation handling off, which reports every match and removes
-  the false negatives above at the cost of flagging real negations. Review the
-  negated phrases the scanner stays silent on if the wording matters to you.
+  clause; `0` turns negation handling off (including both longer reaches),
+  which reports every match and removes the false negatives above at the cost
+  of flagging real negations. Review the negated phrases the scanner stays
+  silent on if the wording matters to you.
+- **Look-alike letters are folded from a fixed list only.** 33 Cyrillic and 22
+  Greek letters that look like Latin letters (for example Cyrillic a, e, o, p
+  and c, and Greek omicron) are read as Latin, but only inside a word that also
+  contains an ASCII Latin letter, so `"gu\u0430ranteed"` is caught
+  and ordinary Cyrillic or Greek words are untouched. The full list is in
+  `src/validate.ts` (`CONFUSABLE_TO_LATIN`). Look-alikes from other scripts, and
+  a word written entirely in look-alike letters, are not folded.
+- **Markup is not stripped.** The scanner reads plain text. A tag or entity
+  inside a phrase (`"<b>guarant</b>eed"`, `"independently&nbsp;verified"`) hides
+  it; strip markup and decode entities before scanning.
 - **The phrase-boundary rule is asymmetric on purpose.** A match must start
   on a word boundary (so "unverified dataset" does not match the phrase
   "verified dataset"), but the END of a match is never boundary-checked,
@@ -347,10 +401,12 @@ Every export from `provenance-kit`, values and types:
   error in your pipeline, check the input length yourself. A claim labeled
   `verified` with any visible `sourceRef` string passes: the scanner does not
   open, fetch or judge the reference.
-- **Empty phrases match nothing.** A `certaintyPhrases` entry that is empty
-  after folding (an empty string, or only invisible characters) is ignored
-  rather than treated as an error, so a blank row in a phrase list you load
-  from a file quietly adds no rule.
+- **Empty phrases match nothing.** Each `certaintyPhrases` entry is trimmed
+  after folding, so a trailing space, CR or LF from a file does not stop it
+  matching. An entry that is empty after that (an empty string, or only
+  whitespace or invisible characters) is ignored rather than treated as an
+  error, so a blank row in a phrase list you load from a file quietly adds no
+  rule.
 - **Shape checks are shallow.** `validateClaims` checks that each claim is an
   object with a string `id` and `text` and a string, `null` or `undefined`
   `sourceRef`; it does not check that ids are unique or that `text` is a

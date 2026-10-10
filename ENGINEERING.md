@@ -20,8 +20,17 @@
   the helpers return are not escaped.
 - A negation only suppresses a certainty phrase within its own clause: a
   boundary (`, ; . : ! ?`, an em or en dash, or a line break) or the word `and`
-  or `but` between the two ends it. This still misses overclaims a same-clause
-  negation does not govern ("Don't miss our independently verified rates.").
+  or `but` between the two ends it. A period or comma inside a number or a
+  known abbreviation (`99.9%`, `1,000`, `U.S.`) is not a boundary, and the
+  commas of a negated list ending in `or` or `nor` ("no representations,
+  warranties or guarantees") do not end it. This still misses overclaims a
+  same-clause negation does not govern ("Don't miss our independently verified
+  rates.").
+- The negation vocabulary, the asserting idioms, the abbreviations and the
+  look-alike letter map are small, explicit, documented lists in
+  `src/validate.ts`. Every cue that makes the scanner more lenient gets a guard
+  case in `test/verdict-table.test.ts` where the cue appears and the claim is
+  still an overclaim.
 - `PROVENANCE_TIERS` and `DEFAULT_CERTAINTY_PHRASES` are frozen
   (`Object.freeze`, including each phrase entry). Extend them by
   spreading into a new array, never by mutating in place.
@@ -60,9 +69,9 @@ installed package — not the local source tree.
   storage beyond a single `sourceRef` string per claim.
 - **Not an exhaustive overclaiming vocabulary.** `DEFAULT_CERTAINTY_PHRASES`
   is a small generic starter list. Extend it per product.
-- **Negation is a character window cut at clause punctuation, not a grammar
-  parser.** It errs in both directions: it reports some negated phrases and
-  misses some overclaims. See the README's Honest limits for examples of each.
+- **Negation is a character window cut at clause punctuation, with small
+  English word lists, not a grammar parser.** It errs in both directions: it
+  reports some negated phrases and misses some overclaims. See the README's Honest limits for examples of each.
 
 ## Are the types wrong? (attw)
 

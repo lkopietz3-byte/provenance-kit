@@ -3,6 +3,82 @@
 All notable changes to this project are documented in this file. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+Fixes from a verdict hunt on real marketing, help-center, legal and pricing
+copy. The exports and the shape of `ClaimOffense` are unchanged. Some inputs
+that used to be accepted now throw, and some verdicts change in both
+directions; see Changed.
+
+### Fixed
+
+- **"No one" and "nobody" negate again.** `"No one can guarantee future
+  results."` and `"Nobody has independently verified these figures."` are no
+  longer reported. They negate only across auxiliary words, so `"No one
+  disputes this independently verified figure."` is still reported.
+- **More negation cues.** `unable`, `lack`, `lacks`, `lacking`, `zero`, `instead
+  of`, `rather than` (each reaching at most three words), every `n't`
+  contraction (`ain't`, `mustn't`, `needn't`, ...) and a `non-` or `un-` prefix
+  attached to the phrase (`"non-guaranteed"`) now negate. `"Non-stop guaranteed
+  support"` and `"Instead of guessing we give you independently verified data"`
+  are still reported.
+- **Idioms that assert what follows are reported.** `"Nothing beats ..."`,
+  `"Nothing compares ..."`, `"No other tool gives ..."`, `"Without (a) doubt
+  ..."`, `"There is no denying ..."`, `"Not to mention ..."`, `"Why not ..."`,
+  `"Not once has ..."` and hyphenated `"no-"` / `"zero-"` compounds (`"No-risk
+  guaranteed trial"`) no longer hide a phrase. `"No other guarantee applies"`
+  and `"no-guarantee estimates"` stay negated.
+- **Clause boundaries skip numbers and abbreviations.** A period or comma inside
+  a number (`99.9%`, `1,000`) or a known abbreviation (`U.S.`, `e.g.`, `i.e.`,
+  `Dr.`, `etc.` mid-sentence) no longer ends a negation. An abbreviation
+  followed by a capitalized word still ends it (`"We are not in the U.S. Our
+  data is independently verified."` is reported).
+- **Negated lists.** `"We make no representations, warranties or guarantees of
+  any kind."` and `"We do not use guaranteed, verified, or proprietary
+  datasets."` are no longer reported. Only the `or` / `nor` list shape counts;
+  `"No fees, no contracts and guaranteed returns."` and `"Don't wait, act now
+  or lose your guaranteed rate."` are still reported.
+- **Long disclaimers in one clause.** A phrase right after `a`, `an`, `as`,
+  `any`, `or`, `nor`, `be` or `been` is reached by a strong negation anywhere
+  earlier in its clause, up to 500 characters back (`"We are not saying that
+  any of these numbers come with a guarantee."`). Other positions keep the
+  40-character default, so `"No credit card required to start your free trial
+  of our independently verified rate tracker."` is still reported.
+- **Look-alike letters.** 33 Cyrillic and 22 Greek letters that look like Latin
+  letters are read as Latin inside words that also contain ASCII Latin letters,
+  so `"gu\u0430ranteed"` (Cyrillic a) is reported.
+- **Phrases are trimmed.** A `certaintyPhrases` entry with a trailing space, CR
+  or LF now matches at the end of a text, and an entry of only whitespace
+  matches nothing instead of flagging every claim with a space in it.
+
+### Changed
+
+- **Unknown option keys throw `TypeError`.** `validateClaims`,
+  `provenanceBadgeText` and `methodologyPageOutline` reject an own, enumerable
+  option key they do not know (`certaintyPhrase`, `negationwindow`), instead of
+  ignoring it. Callers who pass a larger config object straight through as
+  options will see a throw.
+- **Blank methodology strings throw `RangeError`.** A visibly blank `title`,
+  `intro` or `productName` in `methodologyPageOutline` used to render an empty
+  heading or a sentence with a hole in it.
+- **Verdicts change in both directions.** Copy with the negations above is
+  reported less often; copy with the asserting idioms, look-alike letters or
+  `no-` / `zero-` compounds is reported more often. Rerun your claim suite and
+  review the difference before upgrading.
+
+### Documented
+
+- The README's Honest limits list the new word lists, the two longer reaches
+  and their 500-character cap, the overclaims still missed (including `"No more
+  guesswork with guaranteed fares."` and `"Rivals lack independently verified
+  data."`), the noise still reported (a comma list without `or`, `"in any way
+  guaranteed"` far from its negation), that negation words are English only,
+  that markup is not stripped, and the exact look-alike letter list.
+- Plain `"verified"`, `"audited"`, `"proven"` and `"100 percent accurate"` stay
+  out of `DEFAULT_CERTAINTY_PHRASES`, with the reason for each.
+- `test/verdict-table.test.ts` pins one case per hunt finding plus guard cases on
+  both sides.
+
 ## [0.2.1] - 2026-10-07
 
 No change to the library's behavior or API.
