@@ -11,7 +11,14 @@
 
 import type { ProvenanceTier, ProvenanceTierDefinitions } from './types.js';
 import { PROVENANCE_TIERS } from './types.js';
-import { assertDefinitions, optionalString, readDefinition, readDenseArray, readOptionsObject } from './args.js';
+import {
+  assertDefinitions,
+  optionalNonBlankString,
+  readDefinition,
+  readDenseArray,
+  readOptionsObject,
+  rejectUnknownOptions,
+} from './args.js';
 import { describeType, escapeForDisplay, isArray } from './text.js';
 
 const FN = 'methodologyPageOutline';
@@ -63,7 +70,9 @@ const DEFAULT_INTRO =
  *   definitions" or crash deep inside).
  * - `title`, `intro` and `productName` must be strings when given, and `tiers`
  *   a dense array of strings (`TypeError`; a bare string used to be iterated one
- *   character at a time).
+ *   character at a time). A visibly blank `title`, `intro` or `productName`
+ *   throws `RangeError` (it would render an empty heading or a sentence with a
+ *   hole in it), and an unknown option key throws `TypeError`.
  * - A tier with no OWN entry in `definitions` (including an inherited key such as
  *   "constructor", or an entry that is `undefined` or `null`) becomes a `TODO`
  *   line, not an error. A definition that is present but not an object, or whose
@@ -92,9 +101,10 @@ export function methodologyPageOutline(
 ): string {
   assertDefinitions(definitions, FN);
   const raw = readOptionsObject(options, FN);
-  const title = optionalString(raw.title, 'title', FN) ?? 'How we know what we publish';
-  const intro = optionalString(raw.intro, 'intro', FN) ?? DEFAULT_INTRO;
-  const productName = optionalString(raw.productName, 'productName', FN) ?? 'This product';
+  rejectUnknownOptions(raw, ['title', 'intro', 'tiers', 'productName'], FN);
+  const title = optionalNonBlankString(raw.title, 'title', FN) ?? 'How we know what we publish';
+  const intro = optionalNonBlankString(raw.intro, 'intro', FN) ?? DEFAULT_INTRO;
+  const productName = optionalNonBlankString(raw.productName, 'productName', FN) ?? 'This product';
   const tiers = readTiers(raw.tiers);
 
   const lines: string[] = [];
