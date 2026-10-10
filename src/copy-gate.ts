@@ -211,11 +211,12 @@ export const DEFAULT_STRENGTH_RULES: readonly CopyRule[] = Object.freeze(
 // across the boundary), and
 // whitespace collapsing. The rest are one unit for one unit.
 
-// Marks, and the conjoining Hangul jamo that compose with a starter before them.
+// Marks. Conjoining Hangul jamo are not here: they start their own cluster and
+// merge with the one before only where NFKC composes them (see `emitClusters`).
 // A private copy of the whitespace-run regex: its `lastIndex` is ours to reset.
 const RUNS = new RegExp(WHITESPACE_RUN.source, 'g');
 const WHITESPACE_CHAR = /[\s\u0085]/u;
-const COMBINING = /[\p{M}\u1100-\u11ff\ua960-\ua97f\ud7b0-\ud7ff]/u;
+const COMBINING = /\p{M}/u;
 
 export interface Folded {
   /** Folded text, case kept: line breaks are '\n', clause-neutral periods and commas are marked. */
@@ -1092,22 +1093,26 @@ export function assertCopyClean(
 ): CopyScanResult {
   const result = scanCopy(sources, rules, options);
   if (result.offenses.length === 0 && result.missing.length === 0) return result;
-  const lines: string[] = [];
-  for (const o of result.offenses) {
-    lines.push(
-      `${escapeForDisplay(o.sourceId)}:${o.line}:${o.column} [${escapeForDisplay(o.ruleId)}] ` +
-        `"${escapeForDisplay(o.match)}": ${escapeForDisplay(o.reason)}` +
-        (o.replacement === null ? '' : ` Use: ${escapeForDisplay(o.replacement)}`),
-    );
-  }
-  for (const m of result.missing) {
-    lines.push(
+  // Format only what is listed: offenses first, then missing statements.
+  const total = result.offenses.length + result.missing.length;
+  const shown: string[] = [];
+  for (let i = 0; i < Math.min(total, MAX_LISTED); i++) {
+    const o = result.offenses[i];
+    if (o !== undefined) {
+      shown.push(
+        `${escapeForDisplay(o.sourceId)}:${o.line}:${o.column} [${escapeForDisplay(o.ruleId)}] ` +
+          `"${escapeForDisplay(o.match)}": ${escapeForDisplay(o.reason)}` +
+          (o.replacement === null ? '' : ` Use: ${escapeForDisplay(o.replacement)}`),
+      );
+      continue;
+    }
+    const m = result.missing[i - result.offenses.length] as MissingStatement;
+    shown.push(
       `missing [${escapeForDisplay(m.id)}] "${escapeForDisplay(m.phrase)}" in: ` +
         m.sourceIds.map(escapeForDisplay).join(', '),
     );
   }
-  const shown = lines.slice(0, MAX_LISTED);
-  const rest = lines.length - shown.length;
+  const rest = total - shown.length;
   throw new CopyGateError(
     `assertCopyClean: ${result.offenses.length} offense(s), ${result.missing.length} missing statement(s)\n` +
       shown.join('\n') +

@@ -26,6 +26,7 @@ directions; see Changed.
   two longer reaches are opt-in with `extendedNegation`), and `negationWindow:
   0` turns the negation exemption off.
 - Positions stay accurate where NFKC composes across characters (a half-width kana and its voiced mark): the composed span maps to its own start and end. Case folding in the gate does not depend on neighbors: a Greek final sigma reads as sigma in patterns and text. `validateClaims` keeps the native lower-casing, so it still treats final sigma by context.
+- Conjoining Hangul jamo start their own cluster and merge with the one before only where NFKC composes them, so NFD syllables after a line break or after each other keep their own line, column and span. `assertCopyClean` formats only the entries it lists.
 - `DEFAULT_STRENGTH_RULES` (frozen starter list: verified, proof, proven,
   atomic, accuracy, accurate, audited, certified, validated, deterministic,
   exact), `assertCopyClean(...)` (throws `CopyGateError` listing every

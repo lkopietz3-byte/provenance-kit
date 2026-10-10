@@ -365,6 +365,31 @@ describe('Unicode rows from review (composition across clusters, final sigma)', 
   });
 });
 
+
+describe('Unicode rows from review (conjoining Hangul jamo)', () => {
+  const ga: CopyRule = { id: 'ga', kind: 'banned', pattern: '\uac00', reason: 'x' };
+  // A RegExp: a string pattern needs a word boundary on its left, and Hangul syllables are letters.
+  const na: CopyRule = { id: 'na', kind: 'banned', pattern: /\ub098/, reason: 'x' };
+  const gak: CopyRule = { id: 'gak', kind: 'banned', pattern: '\uac01', reason: 'x' };
+  const where = (text: string, rule: CopyRule) =>
+    scanCopy([{ id: 's', text }], [rule]).offenses.map((o) => [o.line, o.column, o.match]);
+
+  it('starts an NFD syllable at its own line and column after a line break', () => {
+    expect(where('Header\n\u1100\u1161', ga)).toEqual([[2, 1, '\u1100\u1161']]);
+    expect(where('Header \u1100\u1161', ga)).toEqual([[1, 8, '\u1100\u1161']]);
+  });
+  it('gives consecutive NFD syllables their own spans', () => {
+    expect(where('x \u1100\u1161\u1102\u1161', na)).toEqual([[1, 5, '\u1102\u1161']]);
+    expect(where('x \u1100\u1161\u1102\u1161', ga)).toEqual([[1, 3, '\u1100\u1161']]);
+  });
+  it('composes a trailing jamo with the syllable before it, and only then', () => {
+    expect(where('\uac00\u11a8', gak)).toEqual([[1, 1, '\uac00\u11a8']]);
+    expect(where('\u1100\u1161\u11a8 x', gak)).toEqual([[1, 1, '\u1100\u1161\u11a8']]);
+    expect(where('\uac00\u1102\u1161', na)).toEqual([[1, 2, '\u1102\u1161']]);
+    expect(where('\uac00\u1102\u1161', ga)).toEqual([[1, 1, '\uac00']]);
+  });
+});
+
 describe('results carry what a report needs', () => {
   it('reports position, original match text, reason and replacement', () => {
     const result = scanCopy(

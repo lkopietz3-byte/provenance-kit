@@ -405,6 +405,7 @@ const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options)
 - **The quoted exemption can be fooled** by a line that talks about words and
   also uses the phrase in quotation marks as a slogan (`Our terms: "guarantee"`).
   Set `exemptQuoted: false` on a rule where that matters.
+- **Positions** are exact for text whose NFKC composition stays within a starter and its following marks, and for Hangul jamo and half-width kana sequences that compose with their neighbors. For rare sequences that compose across other boundaries, the reported span is the smallest enclosing span (a word, and only as a last resort the whole source), so a location can be wider than the match, never off in a different line.
 - **Known misses.** A word hyphenated at a line break (`risk-\nfree`) is not
   rejoined; a zero-width space between two words glues them (`guaranteed\u200breturns`
   reads as `guaranteedreturns`, because the same removal finds `guaran\u200bteed`);

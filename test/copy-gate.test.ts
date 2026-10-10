@@ -26,6 +26,18 @@ const BANNED: CopyRule = { id: 'g', kind: 'banned', pattern: 'guaranteed returns
 const scanOne = (text: string, rules: readonly CopyRule[] = [BANNED], options = {}) =>
   scanCopy([{ id: 's', text }], rules, options);
 
+// CPU time, best of a few runs; 4x the text must stay far below 16x the time.
+const cpu = (fn: () => void): number => {
+  let best = Infinity;
+  for (let i = 0; i < 4; i++) {
+    const before = process.cpuUsage();
+    fn();
+    const after = process.cpuUsage(before);
+    best = Math.min(best, after.user + after.system);
+  }
+  return best;
+};
+
 describe('positions', () => {
   const at = (text: string) => scanOne(text).offenses.map((o) => [o.line, o.column, o.match]);
 
@@ -581,17 +593,6 @@ describe('hostile values', () => {
 });
 
 describe('scaling', () => {
-  // CPU time, best of a few runs; 4x the text must stay far below 16x the time.
-  const cpu = (fn: () => void): number => {
-    let best = Infinity;
-    for (let i = 0; i < 4; i++) {
-      const before = process.cpuUsage();
-      fn();
-      const after = process.cpuUsage(before);
-      best = Math.min(best, after.user + after.system);
-    }
-    return best;
-  };
   const rules: CopyRule[] = [
     BANNED,
     { id: 'rx', kind: 'banned', pattern: /risk[- ]free|zero\s+risk/i, reason: 'x' },
@@ -675,6 +676,34 @@ describe('assertCopyClean', () => {
     expect(error?.offenses).toHaveLength(80);
     expect(error?.message).toContain('... and 30 more');
     expect(error?.message.split('\n')).toHaveLength(52);
+  });
+  it('formats only the entries it lists', () => {
+    const rule: CopyRule = { ...BANNED, reason: 'r'.repeat(1024) };
+    const sources = [{ id: 'a', text: 'guaranteed returns. '.repeat(3000) }];
+    const scanTime = cpu(() => scanCopy(sources, [rule]));
+    const assertTime = cpu(() => {
+      try {
+        assertCopyClean(sources, [rule]);
+      } catch {
+        /* expected */
+      }
+    });
+    expect(assertTime / Math.max(scanTime, 1000)).toBeLessThan(4);
+  });
+  it('lists missing statements after offenses in the same 50', () => {
+    const text = 'guaranteed returns. '.repeat(49);
+    let error: CopyGateError | undefined;
+    try {
+      assertCopyClean([{ id: 'a', text }], [BANNED], {
+        required: [{ id: 'm1', phrase: 'zzz1' }, { id: 'm2', phrase: 'zzz2' }],
+      });
+    } catch (e) {
+      error = e as CopyGateError;
+    }
+    expect(error?.message).toContain('missing [m1]');
+    expect(error?.message).not.toContain('missing [m2]');
+    expect(error?.message).toContain('... and 1 more');
+    expect(error?.missing).toHaveLength(2);
   });
   it('propagates validation errors untouched', () => {
     expect(() => assertCopyClean([], [{ ...BANNED, pattern: '' }])).toThrow(RangeError);
