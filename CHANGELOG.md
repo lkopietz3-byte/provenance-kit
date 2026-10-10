@@ -16,12 +16,16 @@ directions; see Changed.
   results."` and `"Nobody has independently verified these figures."` are no
   longer reported. They negate only across auxiliary words, so `"No one
   disputes this independently verified figure."` is still reported.
-- **More negation cues.** `unable`, `lack`, `lacks`, `lacking`, `zero`, `instead
-  of`, `rather than` (each reaching at most three words), every `n't`
-  contraction (`ain't`, `mustn't`, `needn't`, ...) and a `non-` or `un-` prefix
-  attached to the phrase (`"non-guaranteed"`) now negate. `"Non-stop guaranteed
-  support"` and `"Instead of guessing we give you independently verified data"`
-  are still reported.
+- **More negation cues, each with a narrow reach.** `zero`, `lack`, `lacks` and
+  `lacking` negate a phrase that follows directly; `unable` reaches only across
+  `to`, `be` and a few adverbs; `instead of` and `rather than` only across `a`,
+  `an`, `any`, `be` or `being`. `mustn't`, `needn't`, `shan't`, `mightn't` and
+  `oughtn't` join the listed contractions, and a `non-`, `un-`, `no-` or
+  `zero-` prefix attached to the phrase (`"non-guaranteed"`) negates.
+  `"Zero downtime guaranteed."`, `"Big banks are unable to match our
+  guaranteed savings rate."`, `"Non-stop guaranteed support"` and `"If it
+  ain't guaranteed we don't sell it."` are still reported (`ain't` is not a
+  cue).
 - **Idioms that assert what follows are reported.** `"Nothing beats ..."`,
   `"Nothing compares ..."`, `"No other tool gives ..."`, `"Without (a) doubt
   ..."`, `"There is no denying ..."`, `"Not to mention ..."`, `"Why not ..."`,
@@ -29,21 +33,27 @@ directions; see Changed.
   guaranteed trial"`) no longer hide a phrase. `"No other guarantee applies"`
   and `"no-guarantee estimates"` stay negated.
 - **Clause boundaries skip numbers and abbreviations.** A period or comma inside
-  a number (`99.9%`, `1,000`) or a known abbreviation (`U.S.`, `e.g.`, `i.e.`,
-  `Dr.`, `etc.` mid-sentence) no longer ends a negation. An abbreviation
-  followed by a capitalized word still ends it (`"We are not in the U.S. Our
-  data is independently verified."` is reported).
+  a number (`99.9%`, `1,000`) or a known abbreviation (`U.S.`, `Dr.`, `etc.`
+  mid-sentence) no longer ends a negation. `e.g.` and `i.e.` still do; so does
+  an abbreviation followed by a capital letter, a digit or an opening quote or
+  bracket (`"We are not in the U.S. Our data is independently verified."` is
+  reported). A negation never reaches past a separated number right before the
+  phrase (`"No fees on your first $5,000 guaranteed."` is reported).
 - **Negated lists.** `"We make no representations, warranties or guarantees of
   any kind."` and `"We do not use guaranteed, verified, or proprietary
-  datasets."` are no longer reported. Only the `or` / `nor` list shape counts;
-  `"No fees, no contracts and guaranteed returns."` and `"Don't wait, act now
-  or lose your guaranteed rate."` are still reported.
-- **Long disclaimers in one clause.** A phrase right after `a`, `an`, `as`,
-  `any`, `or`, `nor`, `be` or `been` is reached by a strong negation anywhere
-  earlier in its clause, up to 500 characters back (`"We are not saying that
-  any of these numbers come with a guarantee."`). Other positions keep the
-  40-character default, so `"No credit card required to start your free trial
-  of our independently verified rate tracker."` is still reported.
+  datasets."` no longer report the later items when the negation is not an
+  imperative. Only a tail of at most one word, `or` / `nor` and optionally `a`,
+  `an` or `any` counts, and an imperative (`Never`, `Don't`, `Do not`) never
+  heads a list: `"No fees, no contracts and guaranteed returns."` and `"Don't
+  wait, apply today or the guaranteed rate expires."` are still reported.
+- **Long disclaimers in one clause.** A phrase right after `as`, `any`, `or`,
+  `nor`, `be` or `been` is reached by a strong negation anywhere earlier in its
+  clause, up to 500 characters back, unless a subordinating word (`because`,
+  `since`, `when`, `thanks to`, `with`, `that`, ...) sits between (`"These
+  projections have not been reviewed by any outside firm or independently
+  verified."`). Other positions keep the 40-character default, so `"No credit
+  card required to start your free trial of our independently verified rate
+  tracker."` is still reported.
 - **Look-alike letters.** 33 Cyrillic and 22 Greek letters that look like Latin
   letters are read as Latin inside words that also contain ASCII Latin letters,
   so `"gu\u0430ranteed"` (Cyrillic a) is reported.
@@ -77,7 +87,11 @@ directions; see Changed.
 - Plain `"verified"`, `"audited"`, `"proven"` and `"100 percent accurate"` stay
   out of `DEFAULT_CERTAINTY_PHRASES`, with the reason for each.
 - `test/verdict-table.test.ts` pins one case per hunt finding plus guard cases on
-  both sides.
+  both sides, every overclaim from a second review that 0.2.1 reported (all
+  still reported), the misses and noise that are wrong in both builds, and two
+  CPU-time bounds for long single-clause input.
+- Negation lookups use one index per claim, so a long clause with many matches
+  costs about what 0.2.1 did.
 
 ## [0.2.1] - 2026-10-07
 

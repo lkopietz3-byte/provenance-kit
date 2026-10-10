@@ -152,7 +152,7 @@ clause boundary (`, ; . : ! ?`, an em or en dash, or a line break) or the word
 `and` or `but` between the negation and the phrase ends the negation, so
 `"These are not guesses, they are independently verified."` and `"It is not a
 guess but a verified dataset."` are flagged. A period or comma inside a number
-or a known abbreviation (`99.9%`, `1,000`, `U.S.`, `e.g.`) is not a boundary,
+or a known abbreviation (`99.9%`, `1,000`, `U.S.`, `Dr.`) is not a boundary,
 and a negated list such as `"We make no representations, warranties or
 guarantees"` stays negated. The negation check can still hide a real
 overclaim; see Honest limits.
@@ -290,45 +290,72 @@ Every export from `provenance-kit`, values and types:
   `negationWindow` characters (default 40) immediately before a match, cut off
   at the nearest `, ; . : ! ?`, em dash, en dash, line break, `and` or `but`,
   for a negation word. A period or comma inside a number or a known
-  abbreviation (`99.9%`, `1,000`, `U.S.`, `e.g.`, `i.e.`, `Dr.`, `etc.`
-  mid-sentence) is not a boundary. Two narrow cases reach further back, up to
-  500 characters but never past a boundary: a phrase right after `a`, `an`,
-  `as`, `any`, `or`, `nor`, `be` or `been` (`"We are not saying that any of
-  these numbers come with a guarantee."`), and a negated comma list ending in
-  `or` or `nor` (`"We do not warrant that the service will be uninterrupted,
-  error-free, or guaranteed"`). That fixes the classic false negative (`"These
-  are not guesses, they are independently verified."` is flagged), but the cut
-  is punctuation, two conjunctions and a few word lists, not grammar. It fails
-  in both directions.
+  abbreviation (`99.9%`, `1,000`, `U.S.`, `Dr.`, `etc.` mid-sentence) is not a
+  boundary, with three exceptions: `e.g.` and `i.e.` always are; an
+  abbreviation followed by a capital letter, a digit or an opening quote or
+  bracket is; and a negation never reaches past a number written with a
+  separator that sits right before the phrase (`"No fees on your first $5,000
+  guaranteed."` is flagged). Two narrow cases reach further back, up to 500
+  characters but never past a boundary, `and`, `but` or one of `because`,
+  `since`, `when`, `whenever`, `while`, `whereas`, `if`, `unless`, `until`,
+  `so`, `thanks to`, `with`, `which`, `who`, `whom`, `whose`, `where`, `after`,
+  `before`, `as soon as` or `that`:
+  - a phrase right after `as`, `any`, `or`, `nor`, `be` or `been` (`"These
+    projections have not been reviewed by any outside firm or independently
+    verified."`); `a` and `an` do not get this reach, because marketing copy
+    puts the phrase there after an unrelated negation (`"Never worry about a
+    missed payment again thanks to autopay backed by a guarantee."`);
+  - a negated comma list with at most one word, then `or` or `nor`, then
+    optionally `a`, `an` or `any` before the phrase (`"We do not warrant that
+    the service will be uninterrupted, error-free, or guaranteed"`). An
+    imperative opener (`Never`, `Don't`, `Do not`) never heads such a list, so
+    `"Don't wait, apply today or the guaranteed rate expires."` is flagged.
+
+  That fixes the classic false negative (`"These are not guesses, they are
+  independently verified."` is flagged), but the cut is punctuation, a few
+  conjunctions and a few word lists, not grammar. It fails in both directions.
 
   The word lists are small, explicit and English-only:
   - strong negations (`not`, `never`, `no`, `none`, `nothing`, `nor`,
-    `neither`, `without`, `hardly`, `barely`, `far from`, `cannot` and every
-    `n't` contraction, including `ain't`, `mustn't` and `needn't`) reach any
-    phrase in the window;
-  - `unable`, `lack`, `lacks`, `lacking`, `zero`, `instead of` and `rather
-    than` reach a phrase at most three words later (`"unable to guarantee"`, but
-    not `"Instead of guessing we give you independently verified data"`);
+    `neither`, `without`, `hardly`, `barely`, `far from`, `cannot` and the
+    contractions `isn't`, `wasn't`, `aren't`, `weren't`, `doesn't`, `don't`,
+    `didn't`, `can't`, `couldn't`, `won't`, `wouldn't`, `shouldn't`, `hasn't`,
+    `haven't`, `hadn't`, `mustn't`, `needn't`, `shan't`, `mightn't` and
+    `oughtn't`) reach any phrase in the window. `ain't` is not on the list:
+    `"If it ain't guaranteed we don't sell it."` asserts the guarantee;
+  - `zero`, `lack`, `lacks` and `lacking` negate only a phrase that follows
+    directly (`"Zero guarantees apply."`, `"This tool lacks independently
+    verified data."`). `"Zero downtime guaranteed."` and `"Other apps lack a
+    proprietary dataset like ours."` are flagged;
+  - `unable` reaches only across `to`, `be`, `been`, `being`, `fully`,
+    `currently`, `yet`, `ever`, `always` or `legally` (`"unable to
+    guarantee"`), so `"Big banks are unable to match our guaranteed savings
+    rate."` is flagged;
+  - `instead of` and `rather than` reach only across `a`, `an`, `any`, `be` or
+    `being` (`"rather than a guarantee"`), so `"Get answers rather than guesses
+    with our guarantee."` is flagged;
   - `no one` and `nobody` negate a phrase only across auxiliary words (`"No one
     can guarantee"`, `"Nobody has independently verified"`), not across a main
     verb (`"No one disputes this independently verified figure"` is flagged);
-  - `non-` or `un-` negates only when attached to the phrase itself
-    (`"non-guaranteed"`; `"Non-stop guaranteed support"` is flagged).
+  - `non-`, `un-`, `no-` or `zero-` negates only when attached to the phrase
+    itself (`"non-guaranteed"`, `"no-guarantee"`; `"Non-stop guaranteed
+    support"` and `"No-risk guaranteed trial"` are flagged).
 
   False negatives (a real overclaim is NOT reported; this is the direction that
   matters for a lint). A negation word in the same clause still suppresses a
   phrase it does not govern. On a `modeled` claim each of these is missed:
   - `"Don't miss our independently verified rates."`, `"You can't beat our
-    proprietary dataset."` and `"Never miss a guaranteed fare drop."` (the
-    negation belongs to a verb such as "miss" or "beat", not to the phrase);
+    proprietary dataset."`, `"Other tools cannot match our guaranteed
+    rates."`, `"Never miss a guaranteed fare drop."`, `"You can't go wrong with
+    a guaranteed rate."` and `"Don't settle for less than a guaranteed rate."`
+    (the negation belongs to a verb, not to the phrase);
   - `"Never overpay with our guaranteed lowest price."`, `"No signup needed for
     our proprietary dataset"`, `"No more guesswork with guaranteed fares."`,
     `"No hidden fees guaranteed"`, `"There is no better proprietary database"`
     and `"Rivals lack independently verified data."` (a negation word with the
     phrase further on in the same clause);
-  - `"We never stop working to make sure each estimate is backed by a
-    proprietary dataset."` (the longer reach after `a` also hides an unrelated
-    negation);
+  - `"Skip the guesswork, not the guarantee."` and rhetorical questions such as
+    `"Who wouldn't want a guaranteed return on their savings?"`;
   - `"Not estimated (verified)"`.
 
   These used to be missed and are now reported: `"No fees and guaranteed
@@ -344,17 +371,27 @@ Every export from `provenance-kit`, values and types:
   English.
 
   False positives (noise: something negated is reported):
-  - a negation over a list is cut at a comma that is not followed by the
-    `or` / `nor` list shape, so `"This is not a fact-checked,
-    independently-verified dataset."` is flagged;
+  - a negation over a list is cut at a comma that is not followed by the list
+    shape above, so `"This is not a fact-checked, independently-verified
+    dataset."` and `"Do not use guaranteed, verified, or proprietary
+    datasets."` (an imperative) are flagged;
   - the same happens at `and`: `"We do not use guaranteed and verified
     datasets."` is flagged for "verified dataset". `or` and `nor` are not
     boundaries, so `"not guaranteed or independently verified"` is clean;
-  - a phrase that is not right after one of the words above, more than 40
-    characters after its negation, is flagged: `"Not a single one of the
-    figures in this whole table is in any way guaranteed."`;
-  - an abbreviation the scanner does not know, or one that ends a sentence and
-    is followed by a lower-case word, still counts as a boundary;
+  - a phrase more than 40 characters after its negation that is not right after
+    one of the reach words is flagged: `"We are not saying that any of these
+    numbers come with a guarantee."` and `"Not a single one of the figures in
+    this whole table is in any way guaranteed."`;
+  - the narrow cues above flag honest copy that falls outside their gap lists:
+    `"This estimate lacks a guarantee."`, `"There is zero chance of a guaranteed
+    payout."`, `"Results ain't guaranteed."`, `"No representation is made that
+    the estimates shown are guaranteed."`, `"No one at our company has
+    independently verified the reviews."`, and `"We dont guarantee approval."`
+    (no apostrophe);
+  - a number written with a separator right before the phrase blocks the
+    negation: `"We do not have 1,000 fact-checked records."` is flagged;
+  - `e.g.`, `i.e.`, an abbreviation the scanner does not know, and one that is
+    followed by a capital letter or a digit all count as a boundary;
   - a claim hard-wrapped across lines (`"not\nverified"`) is cut at the line
     break; keep each claim on one line or unwrap it first.
 
