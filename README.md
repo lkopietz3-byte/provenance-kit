@@ -318,7 +318,7 @@ const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options)
   apostrophes straightened, the fixed list of Cyrillic and Greek look-alike
   letters read as Latin inside Latin words, whitespace runs (and line breaks)
   read as one space, a hyphen or en dash between two letters or digits read as
-  a space, and case folded unless `caseSensitive`. So `ｇｕａｒａｎｔｅｅｄ`, `gu\u0430ranteed`,
+  a space, and case folded unless `caseSensitive` (a Greek final sigma reads as sigma, and U+0130 as `i`, so the same phrase folds the same way wherever it sits). So `ｇｕａｒａｎｔｅｅｄ`, `gu\u0430ranteed`,
   `guaran\u200bteed`, NFD text and `guaranteed\nreturns` all match `guaranteed returns`.
 - **String patterns** match from a word boundary on the left; the end is not
   checked, so `guarantee` also matches `guarantees` and `guaranteed`. They are

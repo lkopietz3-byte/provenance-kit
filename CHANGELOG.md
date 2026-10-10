@@ -25,6 +25,7 @@ directions; see Changed.
   offenses. The default is strict: only the short negation reach is used (the
   two longer reaches are opt-in with `extendedNegation`), and `negationWindow:
   0` turns the negation exemption off.
+- Positions stay accurate where NFKC composes across characters (a half-width kana and its voiced mark): the composed span maps to its own start and end. Case folding in the gate does not depend on neighbors: a Greek final sigma reads as sigma in patterns and text. `validateClaims` keeps the native lower-casing, so it still treats final sigma by context.
 - `DEFAULT_STRENGTH_RULES` (frozen starter list: verified, proof, proven,
   atomic, accuracy, accurate, audited, certified, validated, deterministic,
   exact), `assertCopyClean(...)` (throws `CopyGateError` listing every

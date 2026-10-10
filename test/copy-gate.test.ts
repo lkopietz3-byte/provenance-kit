@@ -102,7 +102,7 @@ describe('fold map agrees with validateClaims folding', () => {
   it('agrees on seeded random text built from tricky pieces', () => {
     const pieces = [
       'a', 'B', ' ', '  ', '\n', '\r\n', '-', '\u2011', '\u2013', ',', '.', '9', '\u00a0', '\u200b', '\u0301',
-      '\ufb01', '\uff47', '\u0430', '\u03bf', '\u{1f600}', '\ud800', '\u1100', '\u1161', '\u11a8', "'", '\u2019',
+      '\ufb01', '\uff47', '\u0430', '\u03bf', '\u{1f600}', '\ud800', '\u1100', '\u1161', '\u11a8', '\uff76', '\uff9e', '\uff8a', '\uff9f', '\u0b47', '\u0b3e', '\u03a3', '\u0130', "'", '\u2019',
       'U.S.', 'e.g.', 'not ', 'guaranteed', 'verified ',
     ];
     let seed = 12345;

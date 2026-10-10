@@ -341,6 +341,30 @@ describe('documented limits (pinned so a change is deliberate)', () => {
   rows.forEach(check);
 });
 
+describe('Unicode rows from review (composition across clusters, final sigma)', () => {
+  const rule: CopyRule = { id: 'g', kind: 'banned', pattern: 'guaranteed returns', reason: 'x' };
+  const where = (text: string, rules: readonly CopyRule[] = [rule]) =>
+    scanCopy([{ id: 's', text }], rules).offenses.map((o) => [o.line, o.column, o.match]);
+
+  it('keeps line and column when NFKC composes a half-width kana with its voiced mark', () => {
+    expect(where('Header \uff76\uff9e\nEnjoy guaranteed returns.')).toEqual([[2, 7, 'guaranteed returns']]);
+    expect(where('\uff76\uff9e guaranteed returns')).toEqual([[1, 4, 'guaranteed returns']]);
+    expect(where('\uff8a\uff9f \uff76\uff9e guaranteed returns')).toEqual([[1, 7, 'guaranteed returns']]);
+  });
+  it('maps a match inside a composed span to that span, not to the source', () => {
+    const kana: CopyRule = { id: 'k', kind: 'banned', pattern: '\u30ac', reason: 'x' };
+    expect(where('x \uff76\uff9e y', [kana])).toEqual([[1, 3, '\uff76\uff9e']]);
+  });
+  it('finds a lower-case final sigma pattern in upper-case text, with or without a dotted capital I', () => {
+    const sigma: CopyRule = { id: 's', kind: 'banned', pattern: '\u03bf\u03c2', reason: 'x' };
+    expect(where('\u039f\u03a3', [sigma])).toEqual([[1, 1, '\u039f\u03a3']]);
+    expect(where('\u039f\u03a3 \u0130', [sigma])).toEqual([[1, 1, '\u039f\u03a3']]);
+    expect(where('\u0130 \u039f\u03a3 x', [sigma])).toEqual([[1, 3, '\u039f\u03a3']]);
+    const plain: CopyRule = { id: 'p', kind: 'banned', pattern: '\u03bf\u03c3', reason: 'x' };
+    expect(where('\u039f\u03c2 \u0130', [plain])).toEqual([[1, 1, '\u039f\u03c2']]);
+  });
+});
+
 describe('results carry what a report needs', () => {
   it('reports position, original match text, reason and replacement', () => {
     const result = scanCopy(

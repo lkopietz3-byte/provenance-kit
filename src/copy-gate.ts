@@ -207,12 +207,14 @@ export const DEFAULT_STRENGTH_RULES: readonly CopyRule[] = Object.freeze(
 // functions are the same ones, in the same order), plus, for every UTF-16 unit
 // of it, the range of the original text it came from. Three stages change
 // length: NFKC and invisible-character removal (done per cluster, a starter and
-// the marks that follow it, so composition stays inside one cluster), and
+// the marks that follow it, merged with the next cluster where NFKC composes
+// across the boundary), and
 // whitespace collapsing. The rest are one unit for one unit.
 
 // Marks, and the conjoining Hangul jamo that compose with a starter before them.
 // A private copy of the whitespace-run regex: its `lastIndex` is ours to reset.
 const RUNS = new RegExp(WHITESPACE_RUN.source, 'g');
+const WHITESPACE_CHAR = /[\s\u0085]/u;
 const COMBINING = /[\p{M}\u1100-\u11ff\ua960-\ua97f\ud7b0-\ud7ff]/u;
 
 export interface Folded {
@@ -247,48 +249,82 @@ export function foldWithMap(text: string): Folded {
   };
   const parts: string[] = []; // NFKC of every cluster, to check against `whole`
 
-  for (let i = 0; i < length; ) {
-    if (text.charCodeAt(i) < 0x80) {
-      // A run of ASCII: nothing in it normalizes, hides or combines, except that
-      // the last character joins a mark that follows it.
-      let k = i + 1;
-      while (k < length && text.charCodeAt(k) < 0x80) k++;
-      if (k < length && text.charCodeAt(k) >= 0x300) k--;
-      if (k > i) {
-        grow(k - i);
-        for (let at = i; at < k; at++, count++) {
-          units[count] = text.charCodeAt(at);
-          starts[count] = at;
-          ends[count] = at + 1;
-        }
-        parts.push(text.slice(i, k));
-        i = k;
-        continue;
-      }
-    }
-    const first = text.codePointAt(i) as number;
-    let j = i + (first > 0xffff ? 2 : 1);
-    // Extend the cluster over marks; below U+0300 nothing combines.
+  /** End of the cluster that starts at `at`: a starter and the marks after it (or, `coarse`, up to the next whitespace). */
+  const clusterEnd = (at: number, coarse: boolean): number => {
+    const first = text.codePointAt(at) as number;
+    let j = at + (first > 0xffff ? 2 : 1);
     for (;;) {
       const cp = text.codePointAt(j);
-      if (cp === undefined || cp < 0x300 || !COMBINING.test(String.fromCodePoint(cp))) break;
+      if (cp === undefined) break;
+      if (coarse ? WHITESPACE_CHAR.test(String.fromCodePoint(cp)) : cp < 0x300 || !COMBINING.test(String.fromCodePoint(cp))) break;
       j += cp > 0xffff ? 2 : 1;
     }
-    const normalized = text.slice(i, j).normalize('NFKC');
-    parts.push(normalized);
-    const kept = normalized.replace(INVISIBLE_CHARS, '').replace(CURLY_APOSTROPHES, "'");
-    grow(kept.length);
-    for (let k = 0; k < kept.length; k++, count++) {
-      units[count] = kept.charCodeAt(k);
-      starts[count] = i;
-      ends[count] = j;
-    }
-    i = j;
-  }
+    return j;
+  };
 
+  /**
+   * Normalize and emit the text in clusters. A cluster is merged with the next
+   * one when NFKC would compose across the boundary (a half-width kana and its
+   * voiced mark, a Hangul jamo sequence), so a merged cluster maps to its own
+   * span and nothing wider. `coarse` starts every cluster at a word instead.
+   */
+  const emitClusters = (coarse: boolean): void => {
+    count = 0;
+    parts.length = 0;
+    let carried: { end: number; normalized: string } | undefined;
+    for (let i = 0; i < length; ) {
+      if (!coarse && carried === undefined && text.charCodeAt(i) < 0x80) {
+        // A run of ASCII: nothing in it normalizes, hides or combines, except that
+        // the last character joins a mark that follows it.
+        let k = i + 1;
+        while (k < length && text.charCodeAt(k) < 0x80) k++;
+        if (k < length && text.charCodeAt(k) >= 0x300) k--;
+        if (k > i) {
+          grow(k - i);
+          for (let at = i; at < k; at++, count++) {
+            units[count] = text.charCodeAt(at);
+            starts[count] = at;
+            ends[count] = at + 1;
+          }
+          parts.push(text.slice(i, k));
+          i = k;
+          continue;
+        }
+      }
+      let j = carried?.end ?? clusterEnd(i, coarse);
+      let normalized = carried?.normalized ?? text.slice(i, j).normalize('NFKC');
+      carried = undefined;
+      // Merge forward while composition crosses the boundary. Only a character
+      // from U+0300 up can be the second half of a composition.
+      while (!coarse) {
+        const next = text.codePointAt(j);
+        if (next === undefined || next < 0x300) break;
+        const k = clusterEnd(j, false);
+        const after = text.slice(j, k).normalize('NFKC');
+        if (normalized + after === text.slice(i, k).normalize('NFKC')) {
+          carried = { end: k, normalized: after };
+          break;
+        }
+        normalized = text.slice(i, k).normalize('NFKC');
+        j = k;
+      }
+      parts.push(normalized);
+      const kept = normalized.replace(INVISIBLE_CHARS, '').replace(CURLY_APOSTROPHES, "'");
+      grow(kept.length);
+      for (let k = 0; k < kept.length; k++, count++) {
+        units[count] = kept.charCodeAt(k);
+        starts[count] = i;
+        ends[count] = j;
+      }
+      i = j;
+    }
+  };
+
+  emitClusters(false);
+  if (parts.join('') !== whole) emitClusters(true);
   if (parts.join('') !== whole) {
-    // Composition crossed a cluster boundary (rare scripts). Matches are still
-    // found on the right text, but they all report the start of the source.
+    // Not reachable for text seen so far: whitespace never composes. If it ever
+    // happens the text is still right, and the positions are the whole source.
     const kept = whole.replace(INVISIBLE_CHARS, '').replace(CURLY_APOSTROPHES, "'");
     count = 0;
     grow(kept.length);
@@ -342,25 +378,31 @@ function unitsToString(units: Uint16Array, count: number): string {
 }
 
 /**
- * Lower-case without changing the length: positions in the lower-cased text
- * stay positions in the original fold. `validateClaims` lower-cases the whole
- * string; when that keeps the length the result is identical. The one case it
- * does not keep it (U+0130, capital I with dot) is read as a plain "i" here.
+ * Lower-case without changing the length and without looking at neighbors:
+ * positions in the lower-cased text stay positions in the original fold, and a
+ * pattern and a text fold the same way whatever else the text holds.
+ * `validateClaims` lower-cases the whole string; when that keeps the length the
+ * result differs from this one only in final sigma, which JavaScript lower-cases
+ * to U+03C2 at the end of a word and to U+03C3 elsewhere. Here both read as
+ * U+03C3 (`\u03bf\u03c2` and `\u039f\u03a3` are the same word). The one length change
+ * (U+0130, capital I with dot) is read as a plain "i".
  */
 function lowerSameLength(text: string): string {
   const lower = text.toLowerCase();
-  if (lower.length === text.length) return lower;
-  let out = '';
-  for (const ch of text) {
-    const lc = ch.toLowerCase();
-    if (lc.length === ch.length) {
-      out += lc;
-      continue;
+  let folded = lower;
+  if (lower.length !== text.length) {
+    folded = '';
+    for (const ch of text) {
+      const lc = ch.toLowerCase();
+      if (lc.length === ch.length) {
+        folded += lc;
+        continue;
+      }
+      const head = String.fromCodePoint(lc.codePointAt(0) as number);
+      folded += head.length === ch.length ? head : ch;
     }
-    const head = String.fromCodePoint(lc.codePointAt(0) as number);
-    out += head.length === ch.length ? head : ch;
   }
-  return out;
+  return folded.includes('\u03c2') ? folded.replaceAll('\u03c2', '\u03c3') : folded;
 }
 
 /** A phrase folded the way text is, ready for `findOccurrences`. Empty when it shows nothing. */
