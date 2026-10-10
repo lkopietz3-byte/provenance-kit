@@ -26,6 +26,9 @@ directions; see Changed.
   guaranteed savings rate."`, `"Non-stop guaranteed support"` and `"If it
   ain't guaranteed we don't sell it."` are still reported (`ain't` is not a
   cue).
+- **Hyphenated multiword cues and idioms.** `"far-from-guaranteed"` negates,
+  and `"Not-just guaranteed returns."` and `"Without-question guaranteed
+  returns."` are reported, as their spaced forms are.
 - **Idioms that assert what follows are reported.** `"Nothing beats ..."`,
   `"Nothing compares ..."`, `"No other tool gives ..."`, `"Without (a) doubt
   ..."`, `"There is no denying ..."`, `"Not to mention ..."`, `"Why not ..."`,
@@ -35,8 +38,8 @@ directions; see Changed.
 - **Clause boundaries skip numbers and abbreviations.** A period or comma inside
   a number (`99.9%`, `1,000`) or a known abbreviation (`U.S.`, `Dr.`, `etc.`
   mid-sentence) no longer ends a negation. `e.g.` and `i.e.` still do; so does
-  an abbreviation followed by a capital letter, a digit or an opening quote or
-  bracket (`"We are not in the U.S. Our data is independently verified."` is
+  an abbreviation followed, past any closing quote or bracket, by a capital
+  letter, a digit or an opening quote or bracket (`"We are not in the U.S. Our data is independently verified."` is
   reported). A negation never reaches past a separated number right before the
   phrase (`"No fees on your first $5,000 guaranteed."` is reported).
 - **Negated lists.** `"We make no representations, warranties or guarantees of
@@ -44,8 +47,10 @@ directions; see Changed.
   datasets."` no longer report the later items when the negation is not an
   imperative. Only a tail of at most one word, `or` / `nor` and optionally `a`,
   `an` or `any` counts, and an imperative (`Never`, `Don't`, `Do not`) never
-  heads a list: `"No fees, no contracts and guaranteed returns."` and `"Don't
-  wait, apply today or the guaranteed rate expires."` are still reported.
+  heads a list, nor does a negation separated from the list by a subordinating
+  word: `"No fees, no contracts and guaranteed returns."`, `"Don't wait, apply
+  today or the guaranteed rate expires."` and `"No setup required because each
+  plan includes support, updates, or guaranteed returns."` are still reported.
 - **Long disclaimers in one clause.** A phrase right after `as`, `any`, `or`,
   `nor`, `be` or `been` is reached by a strong negation anywhere earlier in its
   clause, up to 500 characters back, unless a subordinating word (`because`,

@@ -158,13 +158,19 @@ export type ClaimsInput =
 //      scope and window. "ain't" is left out on purpose: "If it ain't
 //      guaranteed we don't sell it" is a slogan that asserts the guarantee.
 // Text is folded (curly apostrophes -> straight) before this runs.
+// A space inside a multiword cue or idiom also matches a hyphen, because the
+// negation check sees hyphens as written ("far-from-guaranteed", "not-just").
+const WORD_GAP = '[ \\-\\u2010-\\u2012]';
+/** Let every space in a regex source fragment also match a hyphen. */
+const hyphenable = (source: string): string => source.replaceAll(' ', WORD_GAP);
+
 const NEGATION_CUE = new RegExp(
   "(?<![\\p{L}\\p{N}'])(?:" +
     '(no[ \\-\\u2010-\\u2012]one|nobody)' +
     '|(zero|lacks|lacking|lack)' +
     '|(unable)' +
-    '|(instead of|rather than)' +
-    '|(not|never|no|none|nothing|nor|neither|without|hardly|barely|far from|cannot|' +
+    hyphenable('|(instead of|rather than)') +
+    hyphenable('|(not|never|no|none|nothing|nor|neither|without|hardly|barely|far from|cannot|') +
     "(?:is|was|are|were|does|do|did|ca|could|wo|would|should|has|have|had|must|need|sha|might|ought)n't)" +
     ")(?![\\p{L}\\p{N}'])",
   'giu',
@@ -202,7 +208,8 @@ const MAX_GAP_WORDS = 4;
 //     "zero-fee"; but "no-guarantee" still negates, because the phrase follows
 //     the hyphen).
 // `nothing but` is also cut by the `but` scope rule; it is listed so the idiom
-// stays correct if that rule changes.
+// stays correct if that rule changes. Each also matches with hyphens for
+// spaces ("not-just", "without-question").
 const ASSERTING_IDIOM = new RegExp(
   '(?<![\\p{L}\\p{N}\'])(?:' +
     [
@@ -223,7 +230,9 @@ const ASSERTING_IDIOM = new RegExp(
       'why not',
       'not once (?:has|have|had|did|was|were)',
       '(?:no|zero)[\\-\\u2010-\\u2012](?!one(?![\\p{L}\\p{N}]))[\\p{L}\\p{N}]+',
-    ].join('|') +
+    ]
+      .map(hyphenable)
+      .join('|') +
     ")(?![\\p{L}\\p{N}'])",
   'giu',
 );
@@ -282,6 +291,12 @@ const COMPLEMENT_LEAD_WORDS: ReadonlySet<string> = new Set(['as', 'any', 'or', '
 // independently verified" is reported.
 const FAR_REACH_STOP_WORD =
   /(?<![\p{L}\p{N}'])(?:because|since|when|whenever|while|whereas|if|unless|until|so|thanks to|with|which|who|whom|whose|where|after|before|as soon as|that)(?![\p{L}\p{N}'])/giu;
+// The same stops, without "that", end a negation's hold on a list it heads
+// (see `headsNegatedList`). "that" is left out because, after a verb such as
+// "warrant" or "represent", it carries the negation into the list: "We do not
+// warrant that the service will be uninterrupted, error-free, or guaranteed".
+const LIST_HEAD_STOP_WORD =
+  /(?<![\p{L}\p{N}'])(?:because|since|when|whenever|while|whereas|if|unless|until|so|thanks to|with|which|who|whom|whose|where|after|before|as soon as)(?![\p{L}\p{N}'])/giu;
 // The last word right before a match, followed by exactly one space.
 const PRECEDING_WORD = /(?<![\p{L}\p{N}'])([\p{L}]+) $/u;
 
@@ -375,7 +390,8 @@ const THOUSANDS_COMMA = /(?<=\d),(?=\d{3}(?!\d))/g;
 // Dotted initialisms ("U.S.", "a.m."): every inner period is kept. The final
 // one is kept too unless a new sentence plausibly starts there (end of text, a
 // line break, or a space, any opening quotes or brackets, and then an
-// upper-case letter or a digit). "e.g." and "i.e." are not kept at all: they
+// upper-case letter or a digit), looking past closing quotes or brackets
+// right after the period ("in the U.S.\u201d Guaranteed ..."). "e.g." and "i.e." are not kept at all: they
 // often introduce a new claim ("No hidden fees i.e. guaranteed transparent
 // pricing").
 const INITIALISM = /(?<![\p{L}\p{N}.])(?:\p{L}\.){2,}/gu;
@@ -386,7 +402,7 @@ const TITLE_ABBREVIATION = /(?<![\p{L}\p{N}])(?:dr|mr|mrs|ms|mx|prof|st|sr|jr|vs
 // Kept unless a new sentence plausibly starts after them (as above).
 const SENTENCE_FINAL_ABBREVIATION = /(?<![\p{L}\p{N}])(?:etc|inc|ltd|co|corp|approx)\./giu;
 // No `i` flag: under `iu`, `\p{Lu}` also matches lower-case letters.
-const NEW_SENTENCE_AFTER = /^(?:$|\n| ["'\p{Ps}\p{Pi}]{0,4}[\p{Lu}\p{N}])/u;
+const NEW_SENTENCE_AFTER = /^["'\p{Pe}\p{Pf}]{0,4}(?:$|\n| ["'\p{Ps}\p{Pi}]{0,4}[\p{Lu}\p{N}])/u;
 
 /** A few UTF-16 units at `index`: all NEW_SENTENCE_AFTER needs, without copying the rest of the text. */
 function peek(text: string, index: number): string {
@@ -566,7 +582,17 @@ function hasGoverningCue(segment: string, allowSubject: boolean): boolean {
  */
 function headsNegatedList(part: string): boolean {
   if (IMPERATIVE_OPENER.test(part)) return false;
-  return hasGoverningCue(part, false);
+  // A subordinate clause between the negation and the list ends its hold: "No
+  // setup required because each plan includes support, updates, or guaranteed
+  // returns" is reported.
+  // A stop word with nothing after it ("not affiliated with, endorsed by, or
+  // guaranteed by") is a dangling preposition, not a new clause.
+  let start = 0;
+  for (const word of part.matchAll(LIST_HEAD_STOP_WORD)) {
+    const end = word.index + word[0].length;
+    if (/[\p{L}\p{N}]/u.test(part.slice(end))) start = end;
+  }
+  return hasGoverningCue(part.slice(start), false);
 }
 
 /** The text after the last `and` / `but`: only what follows it can negate. */
@@ -652,7 +678,7 @@ interface NegationContext {
 
 // "No other" right before the phrase negates it ("No other guarantee
 // applies"); followed by another word it is an asserting idiom (blanked).
-const NO_OTHER_BEFORE_PHRASE = /(?<![\p{L}\p{N}'])no other $/iu;
+const NO_OTHER_BEFORE_PHRASE = /(?<![\p{L}\p{N}'])no[ \-\u2010-\u2012]other[ \-\u2010-\u2012]$/iu;
 // How far back, in characters, the tail scan for non-strong cues looks. They
 // reach at most MAX_GAP_WORDS words, which fits in this.
 const TAIL_SCAN = 160;

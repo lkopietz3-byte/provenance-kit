@@ -292,8 +292,8 @@ Every export from `provenance-kit`, values and types:
   for a negation word. A period or comma inside a number or a known
   abbreviation (`99.9%`, `1,000`, `U.S.`, `Dr.`, `etc.` mid-sentence) is not a
   boundary, with three exceptions: `e.g.` and `i.e.` always are; an
-  abbreviation followed by a capital letter, a digit or an opening quote or
-  bracket is; and a negation never reaches past a number written with a
+  abbreviation followed (past any closing quote or bracket) by a capital
+  letter, a digit or an opening quote or bracket is; and a negation never reaches past a number written with a
   separator that sits right before the phrase (`"No fees on your first $5,000
   guaranteed."` is flagged). Two narrow cases reach further back, up to 500
   characters but never past a boundary, `and`, `but` or one of `because`,
@@ -309,13 +309,18 @@ Every export from `provenance-kit`, values and types:
     optionally `a`, `an` or `any` before the phrase (`"We do not warrant that
     the service will be uninterrupted, error-free, or guaranteed"`). An
     imperative opener (`Never`, `Don't`, `Do not`) never heads such a list, so
-    `"Don't wait, apply today or the guaranteed rate expires."` is flagged.
+    `"Don't wait, apply today or the guaranteed rate expires."` is flagged, and
+    the same subordinating words (except `that`) end a negation's hold on the
+    list: `"No setup required because each plan includes support, updates, or
+    guaranteed returns."` is flagged.
 
   That fixes the classic false negative (`"These are not guesses, they are
   independently verified."` is flagged), but the cut is punctuation, a few
   conjunctions and a few word lists, not grammar. It fails in both directions.
 
-  The word lists are small, explicit and English-only:
+  The word lists are small, explicit and English-only. A multiword cue or idiom
+  also matches with hyphens for its spaces (`"far-from-guaranteed"`,
+  `"not-just"`):
   - strong negations (`not`, `never`, `no`, `none`, `nothing`, `nor`,
     `neither`, `without`, `hardly`, `barely`, `far from`, `cannot` and the
     contractions `isn't`, `wasn't`, `aren't`, `weren't`, `doesn't`, `don't`,

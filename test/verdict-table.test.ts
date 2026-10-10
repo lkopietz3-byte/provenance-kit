@@ -358,3 +358,40 @@ describe('review: cost stays near linear', () => {
     expect(cpuMs(scan('We are not saying ' + 'any guarantee '.repeat(22_857)))).toBeLessThan(3000);
   });
 });
+
+// Final Codex pass on 87dbc19 (three sentences 0.2.1 reported that it hid) and
+// a targeted sweep combining the narrowed rules with subordinate clauses,
+// quotes after abbreviations and hyphenated idioms.
+describe('review: final Codex cases and sweep', () => {
+  table([
+    ['Codex: list head ends at "because"', 'No setup required because each plan includes support, updates, or guaranteed returns.', 'FLAG'],
+    ['Codex: closing quote after U.S.', '“Not available in the U.S.” Guaranteed returns elsewhere.', 'FLAG'],
+    ['Codex: hyphenated "not just"', 'Not-just guaranteed returns.', 'FLAG'],
+    ['Codex: hyphenated "without question"', 'Without-question guaranteed returns.', 'FLAG'],
+    ['Codex: hyphenated "far from" negates', 'These results are far-from-guaranteed.', 'PASS'],
+    ['sweep: list head ends at "since"', 'No paperwork needed since every plan includes coverage, support, or a guarantee.', 'FLAG'],
+    ['sweep: list head ends at "when"', 'Nothing to configure when each tier ships with backups, monitoring, or guaranteed uptime.', 'FLAG'],
+    ['sweep: list head ends at "which"', 'No contracts required, which means every plan comes with support, updates, or guaranteed savings.', 'FLAG'],
+    ['sweep: list head ends at "while"', 'No signup fees while every member gets rewards, perks, or guaranteed cashback.', 'FLAG'],
+    ['sweep: list head ends at "thanks to"', 'Zero hassle thanks to plans with alerts, reports, or guaranteed refunds.', 'FLAG'],
+    ['sweep: list head ends at "so"', 'We never upsell, so every plan includes onboarding, training, or a guarantee.', 'FLAG'],
+    ['sweep: list head ends at "if"', 'No credit card needed if you pick monthly, annual, or guaranteed-rate billing.', 'FLAG'],
+    ['sweep: list head ends at "with"', 'No lock-in with plans that include support, updates, or guaranteed pricing.', 'FLAG'],
+    ['sweep: subject cue never heads a list', 'Nobody else has plans that include support, updates, or guaranteed pricing.', 'FLAG'],
+    ['sweep: imperative with a "that" clause', 'Never miss a plan that includes support, updates, or guaranteed pricing.', 'FLAG'],
+    ['sweep: closing quote after E.U.', '“Not sold in the E.U.” Fact-checked figures for every other market.', 'FLAG'],
+    ['sweep: closing paren after U.S.', '(Not offered in the U.S.) Guaranteed approval for everyone else.', 'FLAG'],
+    ['sweep: stray closing paren after U.K.', 'Not offered in the U.K.) Independently verified results everywhere else.', 'FLAG'],
+    ['sweep: hyphenated "not only"', 'Not-only guaranteed returns but insured ones.', 'FLAG'],
+    ['sweep: hyphenated "not merely"', 'Not-merely fact-checked figures.', 'FLAG'],
+    ['sweep: hyphenated "without a doubt"', 'Without-a-doubt guaranteed returns.', 'FLAG'],
+    ["sweep: hyphenated \"there's no denying\"", "There's-no-denying our numbers are independently verified.", 'FLAG'],
+    ['sweep: hyphenated "not to mention"', 'Not-to-mention guaranteed returns on every plan.', 'FLAG'],
+    ['sweep: "not just" then U.S. then a new sentence', 'Not just in the U.S. Guaranteed approval worldwide.', 'FLAG'],
+    ['sweep: hyphenated "rather than" with a gap word', 'Rather-than-estimated guaranteed quotes.', 'FLAG'],
+    ['sweep: hyphenated "nothing else compares"', 'Nothing-else-compares guaranteed rates.', 'FLAG'],
+    ['sweep guard: "that" after "warrant" keeps the list negated', 'We do not warrant that the service will be uninterrupted, error-free, or guaranteed.', 'PASS'],
+    ['sweep guard: "far-from" then a space', 'Rates are far-from guaranteed.', 'PASS'],
+    ['sweep guard: hyphenated "no other" right before the phrase', 'No-other guarantee applies.', 'PASS'],
+  ]);
+});
