@@ -76,6 +76,13 @@ describe('README: compliance claims need an evidence link', () => {
     expect(run(`${claim} (<a href={\`/trust\`}>details</a>).`)).toHaveLength(1);
     expect(run(`${claim} (<a href={\`/pricing\`}>details</a>).`)).toHaveLength(1);
   });
+  it('does not let an apostrophe in a template-literal attribute value leak the tag into prose', () => {
+    // The apostrophe must not open a quote that outlives the value: "/trust" would then
+    // leak out as a check reference. A template-literal href is still not a link.
+    expect(run('<span title={`don\'t\n/trust`}>We are SOC 2 certified</span>')).toHaveLength(1);
+    expect(run('<span title={`it\'s`}>We are SOC 2 certified</span> see /trust')).toEqual([]);
+    expect(run('<a href={`/trust`} title={`don\'t`}>We are SOC 2 certified</a>')).toHaveLength(1);
+  });
   it('never lets code or a stray angle bracket hide a claim', () => {
     const hits = (text: string) =>
       scanCopy([{ id: 'a', text: markdownToText(text, { keepLinkTargets: true }).text }], [
@@ -226,6 +233,15 @@ describe('README: markdownToText costs linear time on hostile documents', () => 
       expect(cpu(run(80_000)) / Math.max(cpu(run(20_000)), 1000)).toBeLessThan(9);
     }, 60_000);
   }
+  it('documented limit: a literal backtick in an attribute value pairs with the next one and masks the prose between', () => {
+    // Inline code is masked before tags are read, so these two backticks look like one
+    // code span. Avoid literal backticks in attribute values, or extract text with your
+    // framework's renderer. Pinned so that any change is deliberate.
+    const raw = '<span title="`">guaranteed returns</span><span title="`">end</span>';
+    const { text } = markdownToText(raw);
+    expect(text).not.toContain('guaranteed returns');
+    expect(text.length).toBe(raw.length);
+  });
   it('treats a tag that never closes as text, and ignores a tag over the length cap', () => {
     expect(markdownToText('a <b title="x and more text').text).toBe('a <b title="x and more text');
     expect(markdownToText('<a href="/trust"', { keepLinkTargets: true }).text).toBe('<a href="/trust"');

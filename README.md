@@ -179,7 +179,10 @@ supports the claim.
    `href` values: quoted, bare, or a braced string literal with quotes), so a link
    can serve as a check reference. A template-literal `href={`/trust`}` is not
    recognized and counts as no link, so a claim beside it is reported, which is the
-   safe direction. It can also blank
+   safe direction. The recipe cannot parse Markdown mixed with HTML exactly. Known
+   limit: a literal backtick inside an HTML attribute value is read as an inline-code
+   delimiter and can mask the prose up to the next backtick on the line; avoid literal
+   backticks in attribute values, or extract text with your framework's renderer. It can also blank
    known proper nouns you do not want scanned, such as an organization name that
    contains a listed word. Read its output on a few pages before you trust it.
 
@@ -198,7 +201,12 @@ const MAX_TAG = 4096; // a "<" with no closing ">" within this many characters i
 const ATTRIBUTE = /\s([^\s"'=<>\/{}]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\{[^{}]*\})|([^\s"'<>{}]+)))?/gd;
 const BRACED_STRING = /^\{\s*(?:"([^"]*)"|'([^']*)')\s*\}$/d;
 
-/** Index of the ">" that closes the tag starting at `start`, or -1. Quoted values and {braces} may hold a ">". */
+/**
+ * Index of the ">" that closes the tag starting at `start`, or -1. Quoted values and
+ * {braces} may hold a ">", and a template literal inside braces is a quoted value
+ * too (so an apostrophe inside one cannot open a quote that never closes). A
+ * template-literal href is still not read as a link: see hrefValues.
+ */
 function tagEnd(text, start) {
   const limit = Math.min(text.length, start + MAX_TAG);
   let quote = '';
@@ -207,7 +215,7 @@ function tagEnd(text, start) {
     const c = text[i];
     if (quote) {
       if (c === quote) quote = '';
-    } else if (c === '"' || c === "'") {
+    } else if (c === '"' || c === "'" || (depth > 0 && c === '`')) {
       quote = c;
     } else if (c === '{') {
       depth++;
