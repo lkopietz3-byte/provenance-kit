@@ -176,7 +176,10 @@ supports the claim.
    makes that stretch shorter, so it returns `locate(line, column)` to turn a
    position in the extracted text into a position in the file. It keeps link
    text and, with `keepLinkTargets`, link targets (Markdown links and HTML or JSX
-   `href` values), so a link can serve as a check reference. It can also blank
+   `href` values: quoted, bare, or a braced string literal with quotes), so a link
+   can serve as a check reference. A template-literal `href={`/trust`}` is not
+   recognized and counts as no link, so a claim beside it is reported, which is the
+   safe direction. It can also blank
    known proper nouns you do not want scanned, such as an organization name that
    contains a listed word. Read its output on a few pages before you trust it.
 
@@ -193,7 +196,7 @@ const MAX_TAG = 4096; // a "<" with no closing ">" within this many characters i
 // one after another keeps text inside a value (title='href="/trust"') from
 // counting, and `data-href` has a different name from `href`.
 const ATTRIBUTE = /\s([^\s"'=<>\/{}]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\{[^{}]*\})|([^\s"'<>{}]+)))?/gd;
-const BRACED_STRING = /^\{\s*["'`]([^"'`]*)["'`]\s*\}$/d;
+const BRACED_STRING = /^\{\s*(?:"([^"]*)"|'([^']*)')\s*\}$/d;
 
 /** Index of the ">" that closes the tag starting at `start`, or -1. Quoted values and {braces} may hold a ">". */
 function tagEnd(text, start) {
@@ -204,7 +207,7 @@ function tagEnd(text, start) {
     const c = text[i];
     if (quote) {
       if (c === quote) quote = '';
-    } else if (c === '"' || c === "'" || (depth > 0 && c === '`')) {
+    } else if (c === '"' || c === "'") {
       quote = c;
     } else if (c === '{') {
       depth++;
@@ -242,7 +245,9 @@ function hrefValues(tag) {
     if (m[1].toLowerCase() !== 'href') continue;
     for (const group of [2, 3, 5]) if (m[group] !== undefined) found.push([m.indices[group][0], m[group]]);
     const braced = m[4] === undefined ? null : BRACED_STRING.exec(m[4]);
-    if (braced) found.push([m.indices[4][0] + braced.indices[1][0], braced[1]]);
+    for (const group of [1, 2]) {
+      if (braced?.[group] !== undefined) found.push([m.indices[4][0] + braced.indices[group][0], braced[group]]);
+    }
   }
   return found;
 }
@@ -299,8 +304,10 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
   t = blankSpans(t, ['```', '~~~']); // fenced code
   t = blankSpans(t, ['<!--'], '-->'); // comments
   t = t.replace(/^(?:import|export)\s.*$/gm, blank); // MDX imports and exports
-  // HTML and JSX tags, even over several lines, before inline code so that an
-  // href written as href={`/trust`} is read; keep real href values if asked.
+  // Inline code is masked before tags are read: a stray "<span" in code must not
+  // pair with a later ">" and swallow the prose between them.
+  t = t.replace(/`[^`\n]*`/g, blank); // inline code
+  // HTML and JSX tags, even over several lines; keep real href values if asked.
   t = mapTags(t, (tag) => {
     const out = blank(tag).split('');
     if (keepLinkTargets) {
@@ -310,7 +317,6 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
     }
     return out.join('');
   });
-  t = t.replace(/`[^`\n]*`/g, blank); // inline code, and anything a tag step kept inside it
   t = t.replace(/!\[[^\]\n]{0,300}\]\([^)\n]{0,600}\)/g, blank); // images (labels up to 300 characters, targets up to 600: bounded, so the cost stays linear)
   // Links: blank the brackets and parentheses where they stand; keep the label,
   // and the target too when asked, so a link can serve as a check reference.

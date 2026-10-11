@@ -68,11 +68,23 @@ describe('README: compliance claims need an evidence link', () => {
     expect(run(`${claim} (<a href=/trust>details</a>).`)).toEqual([]);
     expect(run(`${claim} (<a href='/security' />).`)).toEqual([]);
   });
-  it('keeps an href written as a JSX template literal', () => {
+  it('keeps an href written as a braced string literal, but not a template literal', () => {
     const claim = 'We are SOC 2 certified';
-    expect(run(`${claim} (<a href={\`/trust\`}>details</a>).`)).toEqual([]);
     expect(run(`${claim} (<a href={"/compliance"}>details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a href={'/trust'}>details</a>).`)).toEqual([]);
+    // A template literal counts as no link: the claim is reported (the safe direction).
+    expect(run(`${claim} (<a href={\`/trust\`}>details</a>).`)).toHaveLength(1);
     expect(run(`${claim} (<a href={\`/pricing\`}>details</a>).`)).toHaveLength(1);
+  });
+  it('never lets code or a stray angle bracket hide a claim', () => {
+    const hits = (text: string) =>
+      scanCopy([{ id: 'a', text: markdownToText(text, { keepLinkTargets: true }).text }], [
+        { id: 'g', kind: 'banned', pattern: 'guaranteed returns', reason: 'x' },
+      ]).offenses.length;
+    expect(hits('Use `<span` to mark guaranteed returns > 0.')).toBe(1);
+    expect(hits('Use `<a href="` then say guaranteed returns > 0.')).toBe(1);
+    expect(hits('Write `<b` and later <i>guaranteed returns</i> > x.')).toBe(1);
+    expect(hits('if a < b then guaranteed returns > 0')).toBe(1);
   });
   it('does not treat an href shown in inline code as a link', () => {
     expect(run('Write `<a href="/trust">` to link. We are SOC 2 certified.')).toHaveLength(1);
