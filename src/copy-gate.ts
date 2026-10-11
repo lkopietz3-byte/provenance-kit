@@ -26,6 +26,7 @@ import {
   findOccurrences,
   foldConfusables,
   isNegated,
+  isWordCodePoint,
   markNonBoundaryPunctuation,
   matchView,
   type NegationContext,
@@ -63,6 +64,13 @@ export interface CopyRule {
    * the exact rule; a quotation around more than the phrase is still an offense.
    */
   exemptQuoted?: boolean;
+  /**
+   * String patterns only: also require a word boundary after the match, so
+   * `proven` skips `provenance` and `#1` skips `#123`. Default `false`, which
+   * keeps plurals and inflections matching (`guarantee` matches `guarantees`).
+   * A `RegExp` pattern states its own end.
+   */
+  wholeWord?: boolean;
   /**
    * A text that must trigger this rule, used by `plantedViolationsFail`. A string
    * pattern plants itself when this is absent; a `RegExp` needs one.
@@ -114,6 +122,15 @@ export interface ScanCopyOptions {
    * "been"). Default false: the gate only looks inside `negationWindow`.
    */
   extendedNegation?: boolean;
+  /**
+   * Known offenses to leave out, so an existing site can adopt the gate and fail
+   * only on new copy. Each entry is `copyBaselineKey(offense)` of an offense you
+   * accepted: source id, rule id and the text of the line, not its number, so
+   * moving a line does not churn the file. Each entry hides one offense (a line
+   * that repeats needs one entry per repeat). Entries that matched nothing come
+   * back as `staleBaseline`, so a fixed page can be pruned.
+   */
+  baseline?: readonly string[];
 }
 
 /** One rule match that is not exempt. */
@@ -127,6 +144,12 @@ export interface CopyOffense {
   column: number;
   /** The matched text exactly as it appears in the source, including any invisible or look-alike characters. */
   match: string;
+  /**
+   * The text of the line the match starts on, whitespace collapsed and trimmed
+   * (a window of about 250 characters around the match on a very long line).
+   * For a baseline, a pull-request comment or a report.
+   */
+  context: string;
   reason: string;
   replacement: string | null;
 }
@@ -143,6 +166,10 @@ export interface CopyScanResult {
   missing: MissingStatement[];
   /** How many sources were scanned. An empty scan has `0` and no offenses; check it if "nothing scanned" should fail. */
   sourcesScanned: number;
+  /** How many offenses `options.baseline` hid. */
+  suppressed: number;
+  /** Baseline entries that matched no offense. Empty when there is no baseline. */
+  staleBaseline: string[];
 }
 
 /** Thrown by `assertCopyClean`. Carries the full result. */
@@ -171,34 +198,46 @@ export interface PlantedViolationReport {
   results: PlantedViolationResult[];
 }
 
-const CHECK_IT = 'Link the check it refers to, or reword.';
-const STRENGTH_WORDS: readonly (readonly [word: string, reason: string])[] = [
-  ['verified', `Says something was checked. ${CHECK_IT}`],
-  ['proof', 'Says the matter is settled. Link the evidence or the check, or reword.'],
-  ['proven', 'Says the matter is settled. Link the evidence or the check, or reword.'],
-  ['atomic', 'Says all-or-nothing behavior. Link the test or the check that shows it, or reword.'],
-  ['accuracy', 'Says how close the numbers are. Link the check or the method, or reword.'],
-  ['accurate', 'Says how close the numbers are. Link the check or the method, or reword.'],
-  ['audited', 'Says an audit happened. Link the audit or its scope, or reword.'],
-  ['certified', 'Says a certification exists. Link it, or reword.'],
-  ['validated', 'Says a validation happened. Link the check, or reword.'],
-  ['deterministic', 'Says the same input always gives the same output. Link the test, or reword.'],
-  ['exact', 'Says there is no error. Link the check, or reword.'],
-];
+const strengthRule = (word: string, reason: string): CopyRule =>
+  Object.freeze<CopyRule>({ id: `strength-${word}`, kind: 'strength', pattern: word, reason, wholeWord: true });
 
 /**
  * A starter list of strength words: words that read as a claim about how well
  * something was checked. Each needs a nearby check reference (`checkReference`)
- * or the match is an offense of kind `strength`. A string pattern matches from a
- * word boundary on, so "proof" also matches "proofread" and "proofs"; use your
- * own `RegExp` rule when you need a hard end. Frozen. Extend by spreading it
- * into a new array. It is not a vocabulary of everything that overclaims.
+ * or the match is an offense of kind `strength`. Four words, kept because they
+ * held up on real copy: on 863 public marketing, pricing and docs pages the
+ * four ran at about 60 percent precision (the 2026-10 field trial; README has
+ * the table), where the eleven-word list this replaced ran at about 25 percent.
+ * Each matches a whole word, so `proven` skips `provenance` and `accurate`
+ * skips `accurately`. Frozen; extend by spreading it into a new array. It is not
+ * a vocabulary of everything that overclaims: the gate finds wording you list.
  */
-export const DEFAULT_STRENGTH_RULES: readonly CopyRule[] = Object.freeze(
-  STRENGTH_WORDS.map(([word, reason]) =>
-    Object.freeze<CopyRule>({ id: `strength-${word}`, kind: 'strength', pattern: word, reason }),
-  ),
-);
+export const DEFAULT_STRENGTH_RULES: readonly CopyRule[] = Object.freeze([
+  strengthRule('accurate', 'Says how close the numbers are. Link the check or the method, or reword.'),
+  strengthRule('audited', 'Says an audit happened. Link the audit or its scope, or reword.'),
+  strengthRule('certified', 'Says a certification exists. Link it, or reword.'),
+  // "has proven useful" is a verb, not a claim; "the proven choice" is.
+  Object.freeze<CopyRule>({
+    id: 'strength-proven',
+    kind: 'strength',
+    pattern:
+      /(?<!(?<![\p{L}\p{N}'])(?:has|have|had|having|'ve)\s+(?:(?:also|already|often|repeatedly|consistently|long|since)\s+)?)(?<![\p{L}\p{N}])proven(?![\p{L}\p{N}])/iu,
+    reason: 'Says the matter is settled. Link the evidence or the check, or reword.',
+    sample: 'It is the proven choice.',
+  }),
+]);
+
+/**
+ * Strength words that are worth listing for pages that make claims, but were
+ * too noisy to ship as a default: `verified` is mostly a status label in app
+ * copy ("Email verified"), and `accuracy` is mostly a metric name in technical
+ * docs. Opt in with `[...DEFAULT_STRENGTH_RULES, ...OPTIONAL_STRENGTH_RULES]`
+ * and scan only the pages where claims live. Frozen.
+ */
+export const OPTIONAL_STRENGTH_RULES: readonly CopyRule[] = Object.freeze([
+  strengthRule('verified', 'Says something was checked. Link the check it refers to, or reword.'),
+  strengthRule('accuracy', 'Says how close the numbers are. Link the check or the method, or reword.'),
+]);
 
 // ---------------------------------------------------------------------------
 // Folding with a map back to the original text.
@@ -428,6 +467,7 @@ interface Compiled {
   replacement: string | null;
   exemptNegated: boolean;
   exemptQuoted: boolean;
+  wholeWord: boolean;
   /** Folded phrase, for a string pattern. */
   needle: string | undefined;
   regex: CompiledRegExp | undefined;
@@ -483,7 +523,7 @@ function cloneRegExp(value: unknown): CompiledRegExp | undefined {
 }
 
 const RULE_KEYS: readonly string[] = Object.freeze([
-  'id', 'pattern', 'reason', 'replacement', 'kind', 'exemptNegated', 'exemptQuoted', 'sample',
+  'id', 'pattern', 'reason', 'replacement', 'kind', 'exemptNegated', 'exemptQuoted', 'wholeWord', 'sample',
 ]);
 const RULE_KINDS: readonly string[] = Object.freeze(['banned', 'retracted', 'strength']);
 
@@ -514,7 +554,14 @@ function readRules(value: unknown, caseSensitive: boolean, fn: string): Compiled
       throw new TypeError(`${fn}: ${name} must be an object (received ${describeType(entry)}).`);
     }
     const raw = entry as Record<string, unknown>;
-    rejectUnknownOptions(raw, RULE_KEYS, fn);
+    for (const key of Object.keys(raw)) {
+      if (!RULE_KEYS.includes(key)) {
+        throw new TypeError(
+          `${fn}: ${name} has unknown key ${displayValue(key)} (known keys: ${RULE_KEYS.join(', ')}). ` +
+            'A rule carries no custom fields; keep an owner or severity in your own map keyed by rule id.',
+        );
+      }
+    }
     const id = nonBlankString(raw.id, `${name}.id`, fn);
     const pattern = raw.pattern;
     const reason = nonBlankString(raw.reason, `${name}.reason`, fn);
@@ -522,6 +569,7 @@ function readRules(value: unknown, caseSensitive: boolean, fn: string): Compiled
     const kind = raw.kind;
     const exemptNegated = optionalBoolean(raw.exemptNegated, `${name}.exemptNegated`, fn, true);
     const exemptQuoted = optionalBoolean(raw.exemptQuoted, `${name}.exemptQuoted`, fn, true);
+    const wholeWord = optionalBoolean(raw.wholeWord, `${name}.wholeWord`, fn, false);
     const sample = raw.sample;
     if (typeof kind !== 'string' || !RULE_KINDS.includes(kind)) {
       throw new RangeError(`${fn}: ${name}.kind must be one of ${RULE_KINDS.join(', ')} (received ${displayValue(kind)}).`);
@@ -545,6 +593,9 @@ function readRules(value: unknown, caseSensitive: boolean, fn: string): Compiled
       }
       patternText = pattern;
     } else {
+      if (wholeWord) {
+        throw new RangeError(`${fn}: ${name}.wholeWord applies to string patterns; a RegExp states its own end.`);
+      }
       regex = cloneRegExp(pattern);
       if (regex === undefined) {
         throw new TypeError(`${fn}: ${name}.pattern must be a string or a RegExp (received ${describeType(pattern)}).`);
@@ -557,6 +608,7 @@ function readRules(value: unknown, caseSensitive: boolean, fn: string): Compiled
       replacement: typeof replacement === 'string' ? replacement : null,
       exemptNegated,
       exemptQuoted,
+      wholeWord,
       needle,
       regex,
       patternText,
@@ -574,10 +626,11 @@ interface ScanConfig {
   caseSensitive: boolean;
   negationWindow: number;
   extendedNegation: boolean;
+  baseline: readonly string[];
 }
 
 const OPTION_KEYS: readonly string[] = Object.freeze([
-  'required', 'checkReference', 'checkWindow', 'caseSensitive', 'negationWindow', 'extendedNegation',
+  'required', 'checkReference', 'checkWindow', 'caseSensitive', 'negationWindow', 'extendedNegation', 'baseline',
 ]);
 const REQUIRED_KEYS: readonly string[] = Object.freeze(['id', 'phrase', 'sourceIds']);
 
@@ -603,6 +656,19 @@ function readConfig(options: unknown, fn: string): ScanConfig {
   const checkWindow = readCount(options.checkWindow, 'checkWindow', 120, fn);
   const negationWindow = readCount(options.negationWindow, 'negationWindow', 40, fn);
   const extendedNegation = optionalBoolean(options.extendedNegation, 'options.extendedNegation', fn, false);
+  const rawBaseline = options.baseline;
+  let baseline: readonly string[] = [];
+  if (rawBaseline !== undefined) {
+    if (!isArray(rawBaseline)) {
+      throw new TypeError(`${fn}: options.baseline must be an array of strings (received ${describeType(rawBaseline)}).`);
+    }
+    baseline = readDenseArray(rawBaseline, 'options.baseline', fn).map((entry, i) => {
+      if (typeof entry !== 'string') {
+        throw new TypeError(`${fn}: options.baseline[${i}] must be a string (received ${describeType(entry)}).`);
+      }
+      return entry;
+    });
+  }
 
   const required: ScanConfig['required'] = [];
   if (rawRequired !== undefined) {
@@ -660,7 +726,7 @@ function readConfig(options: unknown, fn: string): ScanConfig {
       refs.push({ regex });
     });
   }
-  return { required, refs, checkWindow, caseSensitive, negationWindow, extendedNegation };
+  return { required, refs, checkWindow, caseSensitive, negationWindow, extendedNegation, baseline };
 }
 
 function readSources(value: unknown, fn: string): CopySource[] {
@@ -873,6 +939,9 @@ class QuoteIndex {
   }
 }
 
+const CONTEXT_MAX = 240;
+const CONTEXT_SIDE = 110;
+
 /** Line starts in the original text, and code-point columns. */
 class PositionIndex {
   private readonly lineStarts: number[] = [0];
@@ -905,6 +974,27 @@ class PositionIndex {
       counts[text.length] = pairs;
       this.astralBefore = counts;
     }
+  }
+
+  /** The line holding `offset`, whitespace collapsed; a window around the match when the line is very long. */
+  contextAt(offset: number, length: number): string {
+    let lo = 0;
+    let hi = this.lineStarts.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if ((this.lineStarts[mid] as number) <= offset) lo = mid + 1;
+      else hi = mid;
+    }
+    const start = this.lineStarts[lo - 1] as number;
+    let end = lo < this.lineStarts.length ? (this.lineStarts[lo] as number) : this.text.length;
+    while (end > start && (this.text.charCodeAt(end - 1) === 10 || this.text.charCodeAt(end - 1) === 13)) end--;
+    let from = start;
+    let to = end;
+    if (end - start > CONTEXT_MAX) {
+      from = Math.max(start, offset - CONTEXT_SIDE);
+      to = Math.min(end, offset + length + CONTEXT_SIDE);
+    }
+    return this.text.slice(from, to).replace(/\s+/gu, ' ').trim();
   }
 
   at(offset: number): { line: number; column: number } {
@@ -995,7 +1085,14 @@ function scan(sources: CopySource[], rules: Compiled[], config: ScanConfig): Cop
     const found: Found[] = [];
     rules.forEach((rule, index) => {
       if (rule.needle !== undefined) {
-        for (const a of findOccurrences(view, rule.needle)) found.push({ a, b: a + rule.needle.length, rule: index });
+        const needle = rule.needle;
+        const tail = needle.length > 1 && (needle.charCodeAt(needle.length - 1) & 0xfc00) === 0xdc00 ? 2 : 1;
+        const checkEnd = rule.wholeWord && isWordCodePoint(needle.codePointAt(needle.length - tail));
+        for (const a of findOccurrences(view, needle)) {
+          const b = a + needle.length;
+          if (checkEnd && isWordCodePoint(view.codePointAt(b))) continue;
+          found.push({ a, b, rule: index });
+        }
       } else if (rule.regex !== undefined) {
         for (const [a, b] of regexMatches(rule.regex, rxView())) found.push({ a, b, rule: index });
       }
@@ -1020,6 +1117,7 @@ function scan(sources: CopySource[], rules: Compiled[], config: ScanConfig): Cop
         line,
         column,
         match: source.text.slice(from, to),
+        context: positions.contextAt(from, to - from),
         reason: rule.reason,
         replacement: rule.replacement,
       });
@@ -1042,7 +1140,49 @@ function scan(sources: CopySource[], rules: Compiled[], config: ScanConfig): Cop
     const sourceIds = missingBy[i] as string[];
     if (sourceIds.length > 0) missing.push({ id: req.id, phrase: req.phrase, sourceIds });
   });
-  return { offenses, missing, sourcesScanned: sources.length };
+  const { kept, suppressed, stale } = applyBaseline(offenses, config.baseline);
+  return { offenses: kept, missing, sourcesScanned: sources.length, suppressed, staleBaseline: stale };
+}
+
+/**
+ * The key an offense has in a baseline: source id, rule id and line text,
+ * separated by " | ". It does not hold the line number, so adding or moving
+ * lines elsewhere in a file does not change it. Save
+ * `scanCopy(...).offenses.map(copyBaselineKey)` once and pass it back as
+ * `options.baseline`.
+ */
+export function copyBaselineKey(offense: Pick<CopyOffense, 'sourceId' | 'ruleId' | 'context'>): string {
+  return `${offense.sourceId} | ${offense.ruleId} | ${offense.context}`;
+}
+
+function applyBaseline(
+  offenses: CopyOffense[],
+  baseline: readonly string[],
+): { kept: CopyOffense[]; suppressed: number; stale: string[] } {
+  if (baseline.length === 0) return { kept: offenses, suppressed: 0, stale: [] };
+  const remaining = new Map<string, number>();
+  for (const entry of baseline) remaining.set(entry, (remaining.get(entry) ?? 0) + 1);
+  const kept: CopyOffense[] = [];
+  let suppressed = 0;
+  for (const offense of offenses) {
+    const key = copyBaselineKey(offense);
+    const left = remaining.get(key) ?? 0;
+    if (left > 0) {
+      remaining.set(key, left - 1);
+      suppressed++;
+    } else {
+      kept.push(offense);
+    }
+  }
+  const stale: string[] = [];
+  for (const entry of baseline) {
+    const left = remaining.get(entry) ?? 0;
+    if (left > 0) {
+      stale.push(entry);
+      remaining.set(entry, left - 1);
+    }
+  }
+  return { kept, suppressed, stale };
 }
 
 /**

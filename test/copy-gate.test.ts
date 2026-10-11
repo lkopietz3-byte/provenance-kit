@@ -7,6 +7,7 @@ import {
   CopyGateError,
   DEFAULT_CERTAINTY_PHRASES,
   DEFAULT_STRENGTH_RULES,
+  OPTIONAL_STRENGTH_RULES,
   assertCopyClean,
   plantedViolationsFail,
   scanCopy,
@@ -22,6 +23,7 @@ declare const process: {
 };
 const NODE_VM = 'node:vm';
 
+const STRENGTH_ALL: readonly CopyRule[] = [...DEFAULT_STRENGTH_RULES, ...OPTIONAL_STRENGTH_RULES];
 const BANNED: CopyRule = { id: 'g', kind: 'banned', pattern: 'guaranteed returns', reason: 'no guarantee' };
 const scanOne = (text: string, rules: readonly CopyRule[] = [BANNED], options = {}) =>
   scanCopy([{ id: 's', text }], rules, options);
@@ -254,16 +256,16 @@ describe('quoted use', () => {
 
 describe('strength words', () => {
   const opts = { checkReference: ['/methodology', /\[\[check:[a-z0-9-]+\]\]/i] };
-  const strength = (text: string, options = opts) => scanOne(text, DEFAULT_STRENGTH_RULES, options).offenses.map((o) => o.ruleId);
+  const strength = (text: string, options = opts) => scanOne(text, STRENGTH_ALL, options).offenses.map((o) => o.ruleId);
 
   it('is an offense of kind strength with nothing nearby', () => {
-    const [offense] = scanOne('It is verified.', DEFAULT_STRENGTH_RULES, opts).offenses;
+    const [offense] = scanOne('It is verified.', STRENGTH_ALL, opts).offenses;
     expect(offense?.kind).toBe('strength');
     expect(offense?.ruleId).toBe('strength-verified');
     expect(offense?.replacement).toBeNull();
   });
   it('is an offense whenever no checkReference is configured', () => {
-    expect(scanOne('It is verified [[check:x]].', DEFAULT_STRENGTH_RULES).offenses).toHaveLength(1);
+    expect(scanOne('It is verified [[check:x]].', STRENGTH_ALL).offenses).toHaveLength(1);
     expect(strength('It is verified /methodology', { checkReference: [] })).toEqual(['strength-verified']);
   });
   it('passes with a reference on either side, inside the window', () => {
@@ -284,26 +286,28 @@ describe('strength words', () => {
     expect(strength(`A is verified. ${'.'.repeat(300)} B is verified /methodology`)).toEqual(['strength-verified']);
   });
   it('accepts a single string or a single regex as checkReference', () => {
-    expect(scanOne('It is verified /m', DEFAULT_STRENGTH_RULES, { checkReference: '/m' }).offenses).toEqual([]);
-    expect(scanOne('It is verified #7', DEFAULT_STRENGTH_RULES, { checkReference: /#\d+/ }).offenses).toEqual([]);
+    expect(scanOne('It is verified /m', STRENGTH_ALL, { checkReference: '/m' }).offenses).toEqual([]);
+    expect(scanOne('It is verified #7', STRENGTH_ALL, { checkReference: /#\d+/ }).offenses).toEqual([]);
   });
   it('does not match inside other words, and skips a negated use', () => {
     expect(strength('An unverified rumor. Not verified. Approve it.')).toEqual([]);
     expect(strength('Improve it.')).toEqual([]);
   });
   it('flags every default strength word', () => {
-    for (const rule of DEFAULT_STRENGTH_RULES) {
+    for (const rule of STRENGTH_ALL) {
       expect(strength(`Our work is ${rule.pattern as string}.`), rule.id).toEqual([rule.id]);
     }
   });
   it('extends by spreading the default list', () => {
     const custom: CopyRule = { id: 'strength-tested', kind: 'strength', pattern: 'tested', reason: 'x' };
-    expect(scanOne('Fully tested.', [...DEFAULT_STRENGTH_RULES, custom], opts).offenses.map((o) => o.ruleId)).toEqual(['strength-tested']);
+    expect(scanOne('Fully tested.', [...STRENGTH_ALL, custom], opts).offenses.map((o) => o.ruleId)).toEqual(['strength-tested']);
   });
   it('freezes the default list and each entry', () => {
-    expect(Object.isFrozen(DEFAULT_STRENGTH_RULES)).toBe(true);
-    expect(DEFAULT_STRENGTH_RULES.every((r) => Object.isFrozen(r))).toBe(true);
-    expect(() => (DEFAULT_STRENGTH_RULES as CopyRule[]).push(BANNED)).toThrow();
+    for (const list of [DEFAULT_STRENGTH_RULES, OPTIONAL_STRENGTH_RULES]) {
+      expect(Object.isFrozen(list)).toBe(true);
+      expect(list.every((r) => Object.isFrozen(r))).toBe(true);
+      expect(() => (list as CopyRule[]).push(BANNED)).toThrow();
+    }
   });
 });
 
@@ -354,7 +358,7 @@ describe('regex patterns', () => {
   });
   it('copes with a very large number of reference matches (no argument spreading)', () => {
     const text = 'ab '.repeat(300_000) + 'verified';
-    const r = scanOne(text, DEFAULT_STRENGTH_RULES, { checkReference: /ab/ });
+    const r = scanOne(text, STRENGTH_ALL, { checkReference: /ab/ });
     expect(r.offenses).toEqual([]);
   });
   it('keeps case unless the regex says otherwise', () => {
@@ -596,7 +600,7 @@ describe('scaling', () => {
   const rules: CopyRule[] = [
     BANNED,
     { id: 'rx', kind: 'banned', pattern: /risk[- ]free|zero\s+risk/i, reason: 'x' },
-    ...DEFAULT_STRENGTH_RULES,
+    ...STRENGTH_ALL,
   ];
   const options = { checkReference: ['/methodology', /\[\[check:[a-z-]+\]\]/], required: [{ id: 'd', phrase: 'estimates are not guarantees' }] };
   const shapes: Record<string, (n: number) => string> = {
@@ -640,7 +644,7 @@ describe('scaling', () => {
 
 describe('assertCopyClean', () => {
   it('returns the result when clean', () => {
-    expect(assertCopyClean([{ id: 'a', text: 'fine' }], [BANNED])).toEqual({ offenses: [], missing: [], sourcesScanned: 1 });
+    expect(assertCopyClean([{ id: 'a', text: 'fine' }], [BANNED])).toEqual({ offenses: [], missing: [], sourcesScanned: 1, suppressed: 0, staleBaseline: [] });
   });
   it('throws a CopyGateError that lists every offense and missing statement', () => {
     let error: unknown;

@@ -42,7 +42,9 @@ export type {
 export {
   CopyGateError,
   DEFAULT_STRENGTH_RULES,
+  OPTIONAL_STRENGTH_RULES,
   assertCopyClean,
+  copyBaselineKey,
   plantedViolationsFail,
   scanCopy,
 } from './copy-gate.js';

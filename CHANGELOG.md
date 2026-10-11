@@ -27,13 +27,13 @@ directions; see Changed.
   0` turns the negation exemption off.
 - Positions stay accurate where NFKC composes across characters (a half-width kana and its voiced mark): the composed span maps to its own start and end. Case folding in the gate does not depend on neighbors: a Greek final sigma reads as sigma in patterns and text. `validateClaims` keeps the native lower-casing, so it still treats final sigma by context.
 - Conjoining Hangul jamo start their own cluster and merge with the one before only where NFKC composes them, so NFD syllables after a line break or after each other keep their own line, column and span. `assertCopyClean` formats only the entries it lists.
-- `DEFAULT_STRENGTH_RULES` (frozen starter list: verified, proof, proven,
-  atomic, accuracy, accurate, audited, certified, validated, deterministic,
-  exact), `assertCopyClean(...)` (throws `CopyGateError` listing every
-  offense, for tests and CI) and `plantedViolationsFail(rules)` (plants each
-  rule's own sample and reports the rules that miss it).
+- `DEFAULT_STRENGTH_RULES` (frozen starter list: accurate, audited, certified, proven, each a whole word), `OPTIONAL_STRENGTH_RULES` (verified, accuracy), `assertCopyClean(...)` (throws `CopyGateError` listing every offense, for tests and CI) and `plantedViolationsFail(rules)` (plants each rule's own sample and reports the rules that miss it). The starter list was re-derived from a field trial on 863 public marketing, pricing and docs pages: the eleven words first drafted (verified, proof, proven, atomic, accuracy, accurate, audited, certified, validated, deterministic, exact) gave 472 distinct hits of which roughly one in three were real claims; `exact` was 0 of 139, `deterministic` 0 of 6, `validated` 0 of 6, `atomic` 0 of 1 and `proof` 6 of 21, so they are gone, and `verified` (3 of 21) and `accuracy` moved to the opt-in list. The four kept words gave 73 distinct hits, 56 real (single reviewer).
+- `wholeWord: true` on a rule requires a word boundary after a string pattern (`proven` skips `provenance`, `#1` skips `#123`). Off by default.
+- Adoption helpers: `options.baseline` with `copyBaselineKey(offense)` hides accepted offenses by source, rule and line text and reports `suppressed` and `staleBaseline`; each offense carries `context` (its line of text); an unknown rule key now says which keys exist.
+- README: the copy gate guide comes first; the opening states the positioning (a ledger-driven regression gate for wording you already know you do not want); added a worked compliance-claims-need-an-evidence-link ledger, a length-preserving Markdown/MDX/HTML text extractor, a baseline recipe, and the measured precision of the starter words. Both worked examples run in `test/readme-examples.test.ts`.
 - New exports: `scanCopy`, `assertCopyClean`, `plantedViolationsFail`,
-  `CopyGateError`, `DEFAULT_STRENGTH_RULES`, and the types `CopyRule`,
+  `CopyGateError`, `DEFAULT_STRENGTH_RULES`, `OPTIONAL_STRENGTH_RULES`,
+  `copyBaselineKey`, and the types `CopyRule`,
   `CopyRuleKind`, `CopySource`, `RequiredStatement`, `ScanCopyOptions`,
   `CopyOffense`, `MissingStatement`, `CopyScanResult`,
   `PlantedViolationResult` and `PlantedViolationReport`.

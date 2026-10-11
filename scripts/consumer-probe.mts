@@ -7,7 +7,9 @@
 import {
   CopyGateError,
   DEFAULT_STRENGTH_RULES,
+  OPTIONAL_STRENGTH_RULES,
   assertCopyClean,
+  copyBaselineKey,
   plantedViolationsFail,
   scanCopy,
   validateClaims,
@@ -103,9 +105,10 @@ const rule: CopyRule = {
   replacement: '99.9% uptime target',
   exemptNegated: true,
   exemptQuoted: true,
+  wholeWord: false,
   sample: 'We have 99.99% uptime.',
 };
-const ledger: readonly CopyRule[] = [rule, ...DEFAULT_STRENGTH_RULES];
+const ledger: readonly CopyRule[] = [rule, ...DEFAULT_STRENGTH_RULES, ...OPTIONAL_STRENGTH_RULES];
 const sources: CopySource[] = [{ id: 'home', text: 'We have 99.99% uptime.' }];
 const required: RequiredStatement = { id: 'disclaimer', phrase: 'Estimates are not guarantees', sourceIds: ['home'] };
 const scanOptions: ScanCopyOptions = {
@@ -115,6 +118,7 @@ const scanOptions: ScanCopyOptions = {
   caseSensitive: false,
   negationWindow: 40,
   extendedNegation: false,
+  baseline: ['home | uptime | We have 99.99% uptime.'],
 };
 const result: CopyScanResult = scanCopy(sources, ledger, scanOptions);
 const firstOffense: CopyOffense | undefined = result.offenses[0];
@@ -122,7 +126,11 @@ const line: number | undefined = firstOffense?.line;
 const replacement: string | null | undefined = firstOffense?.replacement;
 const missing: MissingStatement[] = result.missing;
 const scanned: number = result.sourcesScanned;
-void [line, replacement, missing, scanned];
+const context: string | undefined = firstOffense?.context;
+const suppressed: number = result.suppressed;
+const stale: string[] = result.staleBaseline;
+const key: string | undefined = firstOffense === undefined ? undefined : copyBaselineKey(firstOffense);
+void [line, replacement, missing, scanned, context, suppressed, stale, key];
 const planted: PlantedViolationReport = plantedViolationsFail(ledger);
 const plantedOk: boolean = planted.ok;
 void plantedOk;

@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_STRENGTH_RULES,
+  OPTIONAL_STRENGTH_RULES,
   scanCopy,
   type CopyRule,
   type ScanCopyOptions,
@@ -45,6 +46,7 @@ const RULES: readonly CopyRule[] = [
     reason: 'No total guarantee is offered.',
   },
   ...DEFAULT_STRENGTH_RULES,
+  ...OPTIONAL_STRENGTH_RULES,
 ];
 
 const OPTIONS: ScanCopyOptions = {
@@ -218,10 +220,10 @@ describe('bad copy is flagged', () => {
       ids: ['strength-verified'],
     },
     {
-      name: 'strength words: proof, atomic, accuracy',
-      text: 'Here is proof. It is atomic. Accuracy matters.',
+      name: 'strength words: accurate, certified, accuracy',
+      text: 'It is accurate. It is certified. Accuracy matters.',
       expected: 'FLAG',
-      ids: ['strength-proof', 'strength-atomic', 'strength-accuracy'],
+      ids: ['strength-accurate', 'strength-certified', 'strength-accuracy'],
     },
     {
       name: 'missing required disclaimer',
@@ -418,6 +420,7 @@ describe('results carry what a report needs', () => {
         line: 2,
         column: 12,
         match: '99.99% uptime',
+        context: 'We deliver 99.99% uptime. Estimates are not guarantees.',
         reason: 'Retracted on 2026-09-30: measured uptime was lower.',
         replacement: '99.9% uptime target',
       },

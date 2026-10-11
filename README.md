@@ -2,9 +2,250 @@
 
 **[Try it in your browser →](https://lkopietz3-byte.github.io/honesty-kits/#provenance-kit)** · Part of [honesty kits](https://github.com/lkopietz3-byte/honesty-kits), a family of small checks for the claims an AI product makes.
 
-Provenance Kit lets a product label claims as verified, modeled, or editorial, then check that public wording matches the claim's evidence tier. The TypeScript library has no runtime dependencies and works across frameworks.
+provenance-kit is a copy regression gate for teams that already know the wording they never want shipped. You keep a short ledger of banned and retracted phrases, and of wording that needs an evidence link beside it. The gate scans the text you ship and fails the build, with file, line and column, when a listed phrase comes back. It also checks that required statements, such as a disclaimer, are present. It runs offline on text you pass in, with no runtime dependencies.
 
-## A synthetic failure pattern this library addresses
+What it does not do: it does not discover overclaims in copy you have not catalogued, because it finds the wording you list. It does not read markup (you extract the text first; there is a recipe below), it does not judge whether a sentence is true, and a clean result is not an honest page. If a prose linter you already run covers your banned-word list, you may not need this. What this adds is the nearby-evidence check, required statements, folding of look-alike letters and spacing tricks, and a planted-sample self-test that tells you when a rule has gone blind.
+
+The package has a second, smaller part: `validateClaims` labels claims `verified`, `modeled` or `editorial` as data and checks that their wording is not stronger than the label allows. See [Claims and tiers](#claims-and-tiers).
+
+## Copy gate: keep listed wording out of shipped copy
+
+**Who it is for:** a small team that keeps its copy in files, already has a handful of phrases legal or the founder never wants shipped (or has retracted), and can spend an afternoon on text extraction and a baseline. In a single-reviewer trial on real marketing, pricing and docs copy, ledgers written for the company ran at roughly 65 to 75 percent precision, and every phrase a ledger named was found where it existed. Starter wording lists you did not write run lower; see the table below.
+
+### Quick start
+
+```ts
+import { readFileSync } from 'node:fs';
+import { expect, test } from 'vitest';
+import { assertCopyClean, plantedViolationsFail, type CopyRule } from 'provenance-kit';
+
+const ledger: CopyRule[] = [
+  {
+    id: 'no-guaranteed-returns',
+    kind: 'banned',
+    pattern: 'guaranteed returns',
+    reason: 'No return is guaranteed.',
+    replacement: 'estimated returns',
+  },
+  {
+    id: 'uptime-retracted',
+    kind: 'retracted',
+    pattern: /99\.99\s*% uptime/i,
+    reason: 'Retracted: measured uptime was lower.',
+    replacement: '99.9% uptime target',
+    sample: 'We deliver 99.99% uptime.', // a RegExp rule needs a planted sample
+  },
+];
+
+test('every rule catches its own planted sample', () => {
+  expect(plantedViolationsFail(ledger).ok).toBe(true);
+});
+
+test('shipped copy has no banned or retracted wording', () => {
+  const sources = ['index.html', 'pricing.html'].map((id) => ({
+    id,
+    text: readFileSync(`dist/${id}`, 'utf8'), // plain text: see "Get plain text" below for markup
+  }));
+  // Throws a CopyGateError listing every offense (file:line:column, rule, reason,
+  // replacement) and every missing statement, so the build fails.
+  assertCopyClean(sources, ledger, {
+    required: [{ id: 'disclaimer', phrase: 'Estimates are not guarantees' }],
+  });
+});
+```
+
+### What goes in a ledger
+
+- **`banned`** is wording you never want shipped. **`retracted`** is wording you
+  once shipped and withdrew. They behave identically; the kind is a label for your
+  reports, so put the date and the reason a claim was withdrawn in `reason`.
+  **`strength`** is wording that is allowed only with a check reference beside it
+  (see [Strength words](#strength-words-and-the-starter-list)).
+- Each rule needs a `reason` (what a writer sees when it fires) and should carry a
+  `replacement` when you know the wording to use instead.
+- A string pattern matches from a word boundary on the left and not on the right,
+  so `guarantee` matches `guarantees` and `guaranteed`. When that is too loose set
+  `wholeWord: true`: `{ pattern: 'proven', wholeWord: true }` skips `provenance`,
+  and `{ pattern: '#1', wholeWord: true }` skips `#123` and `#10`. A `RegExp` states
+  its own boundaries: `/(?<![\w#])#1(?!\d)/`.
+- `guaranteed` does not cover `guarantee` or `guarantees`; list the stem
+  (`guarantee`) when you want the family.
+- Several rules can match the same words, and each reports. Do not list a word
+  that a starter list already covers.
+- Keep style guides and "words we avoid" pages out of the scan, or put their
+  known hits in a baseline: a page that lists banned words in a table is a
+  mention, and only the quoted-mention rule (see the reference) spares it.
+
+### Strength words and the starter list
+
+A strength word is wording about how well something was checked ("verified",
+"certified", "accurate"). It is allowed when a check reference (a methodology or
+trust link, or a `[[check:id]]` token) appears within `checkWindow` characters,
+and an offense otherwise.
+
+`DEFAULT_STRENGTH_RULES` is a four-word starter, each matching a whole word:
+
+| Rule id | Word | Real claims among hits |
+| --- | --- | --- |
+| `strength-accurate` | accurate | 23 of 36 |
+| `strength-audited` | audited | 2 of 4 |
+| `strength-certified` | certified | 25 of 26 |
+| `strength-proven` | proven (not "has proven useful") | 6 of 7 |
+
+`OPTIONAL_STRENGTH_RULES` holds two words that earned a place on claim pages but
+were too noisy to ship as defaults: `strength-verified` (mostly a status label in
+app copy, "Email verified": 3 of 21) and `strength-accuracy` (mostly a metric name in technical
+docs: between 3 in 10 and 5 in 10, depending on how strictly a hit is judged).
+Opt in with `[...DEFAULT_STRENGTH_RULES, ...OPTIONAL_STRENGTH_RULES]` and scan only
+the pages where claims live.
+
+The counts come from scanning 863 public pages (8 MB of marketing, comparison,
+pricing and docs text from open-source sites, October 2026) and reading each
+distinct hit once, as a single reviewer. "Real claim" means the flagged wording asserts the
+strength claim; a different word sense, a status label, a disclaimer and a
+metric name do not count. Together the four starter words gave 73 distinct hits,
+56 of them real claims. The eleven-word list this replaced gave 472 hits on the
+same pages, roughly one in three real (about one in five in the first trial,
+which also counted claims with their method stated beside them as not real). The
+words it dropped were: `exact` (0 of 139: "exactly" is an ordinary adverb),
+`deterministic` (0 of 6), `validated` (0 of 6), `atomic` (0 of 1) and `proof`
+(6 of 21: "social proof", "proof of concept"). Your copy will differ. Treat the list as a
+starting point, print the hits once and delete the rules that do not fit.
+
+### Compliance claims need an evidence link
+
+A compliance claim ("SOC 2 compliant", "HIPAA certified", "GDPR compliant") is
+the strength-word pattern that mattered most in the trial: on one open-source
+product's docs it found eight table rows that said "Compliant" with nothing beside
+them to show the report or certificate. The ledger below flags a framework name
+followed (in the same sentence) by a compliance word, or the reverse, unless a
+link to your trust or compliance page sits nearby.
+
+<!-- example:compliance -->
+```js
+const FRAMEWORK = String.raw`(?:soc ?[123]|hipaa|iso[ /]?(?:iec )?27\d{3}|gdpr|ccpa|pci[- ]?dss|fedramp|esign|eidas)`;
+const CLAIM = String.raw`(?:compliant|certified|certification|attested|accredited)`;
+const reason = 'A compliance claim needs a link to the report, certificate or trust page.';
+
+const complianceRules = [
+  {
+    id: 'compliance-framework-claim',
+    kind: 'strength',
+    pattern: new RegExp(String.raw`\b${FRAMEWORK}\b[^.\n]{0,40}?\b${CLAIM}\b`, 'i'),
+    reason,
+    sample: 'We are SOC 2 certified.',
+  },
+  {
+    id: 'compliance-claim-framework',
+    kind: 'strength',
+    pattern: new RegExp(String.raw`\b${CLAIM}\s+(?:with|for|to|under)\b[^.\n]{0,40}?\b${FRAMEWORK}\b`, 'i'),
+    reason,
+    sample: 'Our servers are compliant with HIPAA.',
+  },
+];
+
+// Pass these options to scanCopy or assertCopyClean:
+const complianceOptions = {
+  checkReference: /\/(?:trust|security|compliance|certifications?)\b/i,
+};
+```
+
+With those options, `We are SOC 2 compliant.` is an offense,
+`We are SOC 2 compliant ([report](/trust)).` is clean (extract with `keepLinkTargets: true` so the link is visible to the gate), and
+`We are not SOC 2, ISO 27001, or HIPAA certified.` is clean. The rules start the
+match at the first framework name, so a negation in front of a list of frameworks
+covers the whole match. (A rule on the word `certified` alone would start after
+the list and be reported.)
+Do not also load the starter `strength-certified` rule: it would report the same
+words twice. Scan your own pages with it. On a page that is about compliance
+(a comparison article titled "The best HIPAA-compliant tools") it will fire on
+every heading and question, which is the right behavior for a claim gate and the
+wrong tool for that article. Whether a claim is allowed is a legal question this
+package does not answer: it checks that a link is nearby, not that the link
+supports the claim.
+
+### Adopting it on an existing site
+
+1. **Get plain text.** The gate reads text, not markup, and its line and column
+   refer to the text you pass. The extractor below blanks Markdown, MDX and HTML
+   syntax with spaces and keeps every line and column where it was, so offenses
+   point into the file a writer edits. It keeps link text (and, with
+   `keepLinkTargets`, link URLs, so a link can serve as a check reference), and it
+   can blank known proper nouns you do not want scanned, such as an organization
+   name that contains a listed word. Read its output on a few pages before you
+   trust it.
+
+<!-- example:extract -->
+```js
+const blank = (text) => text.replace(/[^\n]/g, ' '); // same length, same line breaks
+const ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", mdash: '\u2014', ndash: '\u2013' };
+
+function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
+  let t = raw;
+  t = t.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, blank); // fenced code
+  t = t.replace(/<!--[\s\S]*?-->/g, blank); // comments
+  t = t.replace(/^(?:import|export)\s.*$/gm, blank); // MDX imports and exports
+  t = t.replace(/`[^`\n]*`/g, blank); // inline code
+  t = t.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, blank); // images
+  t = t.replace(/\[([^\]\n]*)\]\(([^)\n]*)\)/g, (m, label, url) =>
+    (keepLinkTargets ? `${label} (${url})` : label).padEnd(m.length),
+  ); // links
+  t = t.replace(/<\/?[A-Za-z][^<>]*>/g, blank); // HTML and JSX tags, even over several lines
+  t = t.replace(/&(#\d+|[a-z]+);/gi, (m, name) => (ENTITIES[name.toLowerCase()] ?? ' ').padEnd(m.length));
+  t = t.replace(/\*\*|__/g, '  '); // emphasis markers
+  t = t.replace(/\|/g, ' '); // table pipes
+  for (const word of allow) t = t.split(word).join(' '.repeat(word.length)); // known-good phrases
+  return t;
+}
+```
+
+   For `.tsx` and `.astro` files, scan your translation catalog or content files
+   when you have them. A regex over JSX is a quick option and its usual failure is
+   catching TypeScript generics; check what it hands you.
+
+2. **Write the ledger, then run it once and read every hit.** Delete or narrow the
+   rules that do not fit your copy. A rule that is wrong on your copy is noise,
+   and a gate that is noisy gets switched off.
+3. **Record a baseline so the build can go green today.** The baseline lists the
+   offenses you have accepted for now and hides exactly those. Each entry is the
+   source id, the rule id and the text of the line (not its number), so adding
+   lines elsewhere does not change it:
+
+```js
+import { readFileSync, writeFileSync } from 'node:fs';
+import { assertCopyClean, copyBaselineKey, scanCopy } from 'provenance-kit';
+
+// Once: accept today's offenses.
+const today = scanCopy(sources, ledger, options);
+writeFileSync('copy-baseline.json', JSON.stringify(today.offenses.map(copyBaselineKey), null, 2));
+
+// In CI: fail only on new offenses.
+const baseline = JSON.parse(readFileSync('copy-baseline.json', 'utf8'));
+assertCopyClean(sources, ledger, { ...options, baseline });
+
+// Optional ratchet: fail when a baseline entry no longer matches, so fixed copy is pruned.
+const result = scanCopy(sources, ledger, { ...options, baseline });
+if (result.staleBaseline.length > 0) throw new Error(`Prune the baseline: ${result.staleBaseline.length} entries are fixed.`);
+```
+
+4. **Scope rules to some pages** by scanning groups of sources separately with
+   their own ledgers (`scanCopy(blogPages, blogLedger)` and
+   `scanCopy(pricingPages, pricingLedger)`).
+5. **Settings.** The defaults are the strict ones. If honest disclaimers that run
+   long are flagged (a cue more than 40 characters before the word),
+   `negationWindow: 60` clears them; on the public pages above, widening to 60 or
+   80 changed no result, and in one trial it cleared one disclaimer that sat 41
+   characters from its cue. `extendedNegation: true` adds the negated-list reach
+   (see the reference); it does not help a rule that matches a word at the end of
+   a negated list ("not SOC 2, ISO 27001, or HIPAA certified" is reported by a
+   rule on `certified` alone), which is why the compliance rules above start at
+   the framework name.
+
+## Claims and tiers
+
+The rest of this file up to the copy gate reference covers `validateClaims`: the claim shape, the three tiers, the scanner and the badge and methodology helpers.
+
+### A synthetic failure pattern this library addresses
 
 The following hypothetical is synthetic; it does not describe a particular
 product, audit, or dataset. On a growing content site, routine editorial and
@@ -162,7 +403,7 @@ overclaim; see Honest limits.
 Negation handling is a heuristic. It trades a few missed overclaims for far
 fewer false alarms on honest disclaimers. On a 137-sentence stress set of real
 marketing, help-center and legal copy (70 overclaims, 67 honest sentences) it
-scores precision 0.815 and recall 0.757, versus 0.620 and 0.629 for 0.2.1.
+scores precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes the unreleased version after it).
 A team that would rather review every certainty word can turn all of it off:
 
 ```ts
@@ -244,68 +485,18 @@ your definitions, plus `TODO`-marked sections for the parts that are
 genuinely domain-specific (what your product doesn't do, your correction
 log, your FAQ) — this library can't honestly know those for you.
 
-## Copy gate
+## Copy gate reference
 
-`validateClaims` checks claims you have already extracted and tiered. The copy
-gate is the other half of a build-failing copy check: it scans the text you ship
-(page files, strings, whatever your test reads) against a ledger of wording you
-have banned or retracted, and checks that required statements are present. It
-is a text lint. It never says a sentence is true, and a clean result only means
-no rule matched.
+This section is the reference for `scanCopy`. For a first run, start with
+[Copy gate: keep listed wording out of shipped copy](#copy-gate-keep-listed-wording-out-of-shipped-copy)
+near the top of this file.
 
-```ts
-import { readFileSync } from 'node:fs';
-import { expect, test } from 'vitest';
-import {
-  DEFAULT_STRENGTH_RULES,
-  assertCopyClean,
-  plantedViolationsFail,
-  type CopyRule,
-} from 'provenance-kit';
-
-const ledger: CopyRule[] = [
-  {
-    id: 'no-guaranteed-returns',
-    kind: 'banned',
-    pattern: 'guaranteed returns',
-    reason: 'No return is guaranteed.',
-    replacement: 'estimated returns',
-  },
-  {
-    id: 'uptime-retracted',
-    kind: 'retracted',
-    pattern: /99\.99\s*% uptime/i,
-    reason: 'Retracted: measured uptime was lower.',
-    replacement: '99.9% uptime target',
-    sample: 'We deliver 99.99% uptime.', // a RegExp rule needs a planted sample
-  },
-  ...DEFAULT_STRENGTH_RULES, // "verified", "proof", "atomic", "accuracy", ...
-];
-
-test('every rule catches its own planted sample', () => {
-  expect(plantedViolationsFail(ledger).ok).toBe(true);
-});
-
-test('shipped copy has no banned or retracted wording', () => {
-  const sources = ['index.html', 'pricing.html'].map((id) => ({
-    id,
-    text: readFileSync(`dist/${id}`, 'utf8'),
-  }));
-  // Throws a CopyGateError listing every offense (file:line:column, rule, reason,
-  // replacement) and every missing statement, so the build fails.
-  assertCopyClean(sources, ledger, {
-    required: [{ id: 'disclaimer', phrase: 'Estimates are not guarantees' }],
-    checkReference: [/\[\[check:[a-z0-9-]+\]\]/i, '/methodology'],
-  });
-});
-```
-
-`scanCopy(sources, rules, options?)` returns the same information without
-throwing:
+`scanCopy(sources, rules, options?)` returns the same information `assertCopyClean`
+throws, without throwing:
 
 ```ts
-const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options);
-// offenses: [{ sourceId, ruleId, kind, line, column, match, reason, replacement }]
+const { offenses, missing, sourcesScanned, suppressed, staleBaseline } = scanCopy(sources, ledger, options);
+// offenses: [{ sourceId, ruleId, kind, line, column, match, context, reason, replacement }]
 // missing:  [{ id, phrase, sourceIds }]   (sourceIds = the sources that lack it)
 ```
 
@@ -321,8 +512,11 @@ const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options)
   a space, and case folded unless `caseSensitive` (a Greek final sigma reads as sigma, and U+0130 as `i`, so the same phrase folds the same way wherever it sits). So `ｇｕａｒａｎｔｅｅｄ`, `gu\u0430ranteed`,
   `guaran\u200bteed`, NFD text and `guaranteed\nreturns` all match `guaranteed returns`.
 - **String patterns** match from a word boundary on the left; the end is not
-  checked, so `guarantee` also matches `guarantees` and `guaranteed`. They are
-  matched in linear time. A blank pattern throws; it would match nothing.
+  checked, so `guarantee` also matches `guarantees` and `guaranteed`. Set
+  `wholeWord: true` on a rule to require a boundary after the match too (`proven`
+  skips `provenance`, `#1` skips `#123`); a `RegExp` pattern cannot use it and
+  throws. String patterns are matched in linear time. A blank pattern throws; it
+  would match nothing.
 - **RegExp patterns** are cloned (your regex is never run and its `lastIndex`
   is never touched), made global and non-sticky, and run on the folded text with
   case kept, so write the `i` flag yourself. In that text every whitespace run,
@@ -332,6 +526,13 @@ const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options)
   point under `u` and `v`, so it always ends. A pattern that backtracks
   catastrophically will hang the scan; that is your responsibility, as it is
   with any regex.
+- **Offense context.** `context` is the text of the line the match starts on
+  (whitespace collapsed; a window around the match on a line over 240
+  characters). `copyBaselineKey(offense)` turns an offense into the baseline entry
+  `source | rule | context`.
+- **Baseline.** `options.baseline` is an array of those entries. Each hides one
+  offense with the same source, rule and line text; `suppressed` counts them and
+  `staleBaseline` lists entries that matched nothing. A malformed baseline throws.
 - **Positions.** `line` and `column` are 1-based and describe the START of the
   match in your original text. Lines end at LF, CRLF or CR. `column` counts
   Unicode code points, so an emoji is one column and a combining mark is its own.
@@ -366,11 +567,11 @@ const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options)
   `[[check:id]]` token, or an array of them) appears within `checkWindow`
   characters (default 120) before or after it. With no `checkReference`
   configured, every strength match is an offense. `DEFAULT_STRENGTH_RULES` holds
-  `verified`, `proof`, `proven`, `atomic`, `accuracy`, `accurate`, `audited`,
-  `certified`, `validated`, `deterministic` and `exact`; it is a starter list.
-  Extend it by spreading: `[...DEFAULT_STRENGTH_RULES, myRule]`. A string
-  pattern matches by prefix, so `proof` also matches `proofread`; use a
-  `RegExp` such as `/\bproof\b/i` for a hard end.
+  `accurate`, `audited`, `certified` and `proven` (whole words; `proven` is a
+  `RegExp` that skips "has proven useful"); `OPTIONAL_STRENGTH_RULES` holds
+  `verified` and `accuracy`. Rule ids are `strength-<word>`. Both are starter
+  lists with measured precision in the guide above. Extend them by spreading:
+  `[...DEFAULT_STRENGTH_RULES, myRule]`.
 - **Required statements** (`options.required`, `[{ id, phrase, sourceIds? }]`)
   must appear in every source, or in the listed `sourceIds` only. The phrase is
   folded like a string pattern. Presence is all that is checked: the statement
@@ -406,6 +607,27 @@ const { offenses, missing, sourcesScanned } = scanCopy(sources, ledger, options)
   also uses the phrase in quotation marks as a slogan (`Our terms: "guarantee"`).
   Set `exemptQuoted: false` on a rule where that matters.
 - **Positions** are exact for text whose NFKC composition stays within a starter and its following marks, and for Hangul jamo and half-width kana sequences that compose with their neighbors. For rare sequences that compose across other boundaries, the reported span is the smallest enclosing span (a word, and only as a last resort the whole source), so a location can be wider than the match, never off in a different line.
+- **Negation can govern the wrong phrase.** A cue in the same clause hides a
+  match it does not govern: `No setup required for our guaranteed uptime SLA` and
+  `There is no limit to what you can do on our unlimited plan` pass a rule on
+  `guaranteed` or `unlimited`. A verb-attached negation (`We never miss a legally
+  binding signature`) hides the claim it asserts. In a trial on public copy, the
+  default window hid no real overclaim in 42 reviewed exemptions, and these shapes
+  still pass; review the negated hits of rules that matter by running them once
+  with `negationWindow: 0`.
+- **A hard-wrapped line break ends a negation.** `Results are not\nguaranteed`
+  is reported because the line break is a clause boundary. Unwrap soft-wrapped
+  paragraphs in your extractor if your prose is wrapped (it changes line numbers,
+  so do it only when the line positions do not matter to you).
+- **A negated list that ends in a strength word is reported** by a rule on that
+  word alone (`not SOC 2, ISO 27001, or HIPAA certified` against `certified`).
+  Start the rule at the first name instead, as the compliance rules above do.
+- **A checklist of banned words after a cue is only partly spared.** In `No
+  "guaranteed," "compliant," "admissible,"` the first word is spared by the cue
+  and the quoted rule needs a word such as "banned" on the line for the rest. Keep
+  guideline pages out of the scan or put their hits in the baseline.
+- **Synonyms and paraphrase** (`no limits to your data` for `unlimited`) are not
+  seen: the gate finds the wording you list.
 - **Known misses.** A word hyphenated at a line break (`risk-\nfree`) is not
   rejoined; a zero-width space between two words glues them (`guaranteed\u200breturns`
   reads as `guaranteedreturns`, because the same removal finds `guaran\u200bteed`);
@@ -437,10 +659,12 @@ Every export from `provenance-kit`, values and types:
 | `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }` — what `validateClaims` accepts |
 | `ValidateClaimsOptions` | Type: `{ certaintyPhrases?, certaintyRequiresTier?, requireSourceRefForTiers?, caseSensitive?, negationWindow? }` |
 | `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input`, claims or options (including a hole in a sparse array, a non-string `id` or `text`, and an unknown option key), and `RangeError` for an out-of-range option. |
-| `CopyRule`, `CopyRuleKind` | Types: one ledger entry `{ id, pattern, reason, replacement?, kind, exemptNegated?, exemptQuoted?, sample? }` and its kind, `'banned' \| 'retracted' \| 'strength'` |
-| `CopySource`, `RequiredStatement`, `ScanCopyOptions` | Types: `{ id, text }`; `{ id, phrase, sourceIds? }`; `{ required?, checkReference?, checkWindow?, caseSensitive?, negationWindow?, extendedNegation? }` |
-| `CopyOffense`, `MissingStatement`, `CopyScanResult` | Types: `{ sourceId, ruleId, kind, line, column, match, reason, replacement }`; `{ id, phrase, sourceIds }`; `{ offenses, missing, sourcesScanned }` |
-| `DEFAULT_STRENGTH_RULES` | Value: 11 starter strength-word rules. Frozen (including each entry). |
+| `CopyRule`, `CopyRuleKind` | Types: one ledger entry `{ id, pattern, reason, replacement?, kind, exemptNegated?, exemptQuoted?, wholeWord?, sample? }` and its kind, `'banned' \| 'retracted' \| 'strength'` |
+| `CopySource`, `RequiredStatement`, `ScanCopyOptions` | Types: `{ id, text }`; `{ id, phrase, sourceIds? }`; `{ required?, checkReference?, checkWindow?, caseSensitive?, negationWindow?, extendedNegation?, baseline? }` |
+| `CopyOffense`, `MissingStatement`, `CopyScanResult` | Types: `{ sourceId, ruleId, kind, line, column, match, context, reason, replacement }`; `{ id, phrase, sourceIds }`; `{ offenses, missing, sourcesScanned, suppressed, staleBaseline }` |
+| `DEFAULT_STRENGTH_RULES` | Value: 4 starter strength-word rules (`accurate`, `audited`, `certified`, `proven`). Frozen (including each entry). |
+| `OPTIONAL_STRENGTH_RULES` | Value: 2 opt-in strength-word rules (`verified`, `accuracy`). Frozen (including each entry). |
+| `copyBaselineKey(offense)` | Function: the baseline entry for an offense, `source \| rule \| line text`. |
 | `scanCopy(sources, rules, options?)` | Function: the copy gate, returns `CopyScanResult`. Throws `TypeError` or `RangeError` for malformed input. |
 | `assertCopyClean(sources, rules, options?)` | Function: like `scanCopy`, but throws `CopyGateError` when there is any offense or missing statement. |
 | `CopyGateError` | Value: `Error` subclass thrown by `assertCopyClean`, with `offenses` and `missing`. |
