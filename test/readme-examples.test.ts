@@ -52,6 +52,28 @@ describe('README: compliance claims need an evidence link', () => {
     expect(run('<a href="/trust">We are SOC 2 certified</a>.', complianceOptions, {})).toHaveLength(1);
     expect(run('<a href="/pricing">We are SOC 2 certified</a>.')).toHaveLength(1);
   });
+  it('keeps only a real href attribute, not look-alikes or text inside another value', () => {
+    const claim = 'We are SOC 2 certified';
+    expect(run(`${claim} (<span data-href="/trust">details</span>).`)).toHaveLength(1);
+    expect(run(`${claim} (<span aria-href='/trust'>details</span>).`)).toHaveLength(1);
+    expect(run(`${claim} (<span title='href="/trust"'>details</span>).`)).toHaveLength(1);
+    expect(run(`${claim} (<span title="see href='/trust'">details</span>).`)).toHaveLength(1);
+    expect(run(`${claim} (<a onClick={() => go("href='/trust'")} href="/team">details</a>).`)).toHaveLength(1);
+    expect(run(`${claim} (<a HREF="/trust">details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a title="a > b" href="/trust">details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a title="x"\n   href="/trust">details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a href=/trust>details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a href='/security' />).`)).toEqual([]);
+  });
+  it('keeps an href written as a JSX template literal', () => {
+    const claim = 'We are SOC 2 certified';
+    expect(run(`${claim} (<a href={\`/trust\`}>details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a href={"/compliance"}>details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a href={\`/pricing\`}>details</a>).`)).toHaveLength(1);
+  });
+  it('does not treat an href shown in inline code as a link', () => {
+    expect(run('Write `<a href="/trust">` to link. We are SOC 2 certified.')).toHaveLength(1);
+  });
   it('flags table rows that say Compliant with nothing beside them', () => {
     expect(run('| Framework | Status |\n| --- | --- |\n| ESIGN / UETA | Compliant |\n| SOC 2 | Compliant |').map((o) => o[1])).toEqual([3, 4]);
   });

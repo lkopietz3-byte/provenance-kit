@@ -167,7 +167,9 @@ supports the claim.
 ### Adopting it on an existing site
 
 1. **Get plain text.** The gate reads text, not markup, and its line and column
-   refer to the text you pass. The extractor below blanks Markdown, MDX and HTML
+   refer to the text you pass. The extractor below is a starting point for common
+   Markdown, MDX and HTML, not an HTML parser; for complex templates, extract the
+   text with your framework's own renderer and pass that to `scanCopy`. The extractor below blanks Markdown, MDX and HTML
    syntax with spaces, so offenses point into the file a writer edits without any
    mapping. The one exception is a character entity: `&#114;` and `&nbsp;` are
    decoded (otherwise `guaranteed &#114;eturns` would slip past a rule), which
@@ -186,7 +188,25 @@ const NAMED = {
   hellip: '\u2026', lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
 };
 const ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));/g;
-const HREF = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*["'`]([^"'`]*)["'`]\s*\})/gi;
+// A tag, allowing quoted attribute values and {braces} to hold a ">".
+const TAG = /<\/?[A-Za-z](?:"[^"]*"|'[^']*'|\{[^{}]*\}|[^<>"'{}])*>/g;
+// One attribute: whitespace, its name, then an optional value. Reading attributes
+// one after another keeps text inside a value (title='href="/trust"') from
+// counting, and `data-href` has a different name from `href`.
+const ATTRIBUTE = /\s([^\s"'=<>\/{}]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\{[^{}]*\})|([^\s"'<>{}]+)))?/gd;
+const BRACED_STRING = /^\{\s*["'`]([^"'`]*)["'`]\s*\}$/d;
+
+/** [offset, text] of each real `href` value in one tag. */
+function hrefValues(tag) {
+  const found = [];
+  for (const m of tag.matchAll(ATTRIBUTE)) {
+    if (m[1].toLowerCase() !== 'href') continue;
+    for (const group of [2, 3, 5]) if (m[group] !== undefined) found.push([m.indices[group][0], m[group]]);
+    const braced = m[4] === undefined ? null : BRACED_STRING.exec(m[4]);
+    if (braced) found.push([m.indices[4][0] + braced.indices[1][0], braced[1]]);
+  }
+  return found;
+}
 
 function decodeEntity(dec, hex, name) {
   const code = dec !== undefined ? Number(dec) : hex !== undefined ? parseInt(hex, 16) : undefined;
@@ -196,8 +216,10 @@ function decodeEntity(dec, hex, name) {
 }
 
 /**
- * Plain text from Markdown, MDX or HTML. Everything except character entities is
- * blanked in place, so text, lines and columns stay where they were. An entity
+ * Plain text from Markdown, MDX or HTML. A starting point for common Markdown,
+ * MDX and HTML, not an HTML parser: for complex templates, extract the text with
+ * your framework's own renderer and pass that to scanCopy. Everything except
+ * character entities is blanked in place, so text, lines and columns stay where they were. An entity
  * (`&#114;`, `&#x72;`, `&nbsp;`) is decoded, which changes the length of that
  * stretch, so `locate(line, column)` maps a position in `text` back to the file.
  */
@@ -206,23 +228,22 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
   t = t.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, blank); // fenced code
   t = t.replace(/<!--[\s\S]*?-->/g, blank); // comments
   t = t.replace(/^(?:import|export)\s.*$/gm, blank); // MDX imports and exports
-  t = t.replace(/`[^`\n]*`/g, blank); // inline code
-  t = t.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, blank); // images
-  // Links: blank the brackets and parentheses where they stand; keep the label,
-  // and the target too when asked, so a link can serve as a check reference.
-  t = t.replace(/\[([^\]\n]*)\]\(([^)\n]*)\)/g, (m, label, url) => ` ${label}  ${keepLinkTargets ? url : blank(url)} `);
-  // HTML and JSX tags, even over several lines; keep an href value if asked.
-  t = t.replace(/<\/?[A-Za-z][^<>]*>/g, (tag) => {
+  // HTML and JSX tags, even over several lines, before inline code so that an
+  // href written as href={`/trust`} is read; keep real href values if asked.
+  t = t.replace(TAG, (tag) => {
     const out = blank(tag).split('');
     if (keepLinkTargets) {
-      for (const m of tag.matchAll(HREF)) {
-        const value = m[1] ?? m[2] ?? m[3];
-        const at = m.index + m[0].lastIndexOf(value);
+      for (const [at, value] of hrefValues(tag)) {
         for (let i = 0; i < value.length; i++) if (value[i] !== '\n' && value[i] !== '\r') out[at + i] = value[i];
       }
     }
     return out.join('');
   });
+  t = t.replace(/`[^`\n]*`/g, blank); // inline code, and anything a tag step kept inside it
+  t = t.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, blank); // images
+  // Links: blank the brackets and parentheses where they stand; keep the label,
+  // and the target too when asked, so a link can serve as a check reference.
+  t = t.replace(/\[([^\]\n]*)\]\(([^)\n]*)\)/g, (m, label, url) => ` ${label}  ${keepLinkTargets ? url : blank(url)} `);
   t = t.replace(/\*\*|__/g, '  '); // emphasis markers
   t = t.replace(/\|/g, ' '); // table pipes
   for (const word of allow) t = t.split(word).join(' '.repeat(word.length)); // known-good phrases
