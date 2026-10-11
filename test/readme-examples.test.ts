@@ -9,6 +9,9 @@ const NODE_FS = 'node:fs';
 const NODE_VM = 'node:vm';
 const fs = (await import(NODE_FS)) as { readFileSync(path: string, encoding: string): string };
 const vm = (await import(NODE_VM)) as { runInNewContext(code: string, context: object): unknown };
+declare const process: {
+  cpuUsage(previous?: { user: number; system: number }): { user: number; system: number };
+};
 const README = fs.readFileSync('README.md', 'utf8'); // vitest runs from the package root
 
 /** Run the JavaScript block after `<!-- example:name -->` and return the named values it defines. */
@@ -177,5 +180,59 @@ describe('README: markdownToText', () => {
     const noun = 'American Institute of Certified Public Accountants';
     const out = markdownToText(`Run by the ${noun}.`, { allow: [noun] }).text;
     expect(scanCopy([{ id: 'a', text: out }], [{ id: 'c', kind: 'banned', pattern: 'certified', reason: 'x' }]).offenses).toEqual([]);
+  });
+});
+
+describe('README: markdownToText costs linear time on hostile documents', () => {
+  // CPU time, best of a few runs; 4x the text must stay far below 16x the time.
+  const cpu = (fn: () => void): number => {
+    let best = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const before = process.cpuUsage();
+      fn();
+      const after = process.cpuUsage(before);
+      best = Math.min(best, after.user + after.system);
+    }
+    return best;
+  };
+  const shapes: Record<string, (n: number) => string> = {
+    'unterminated <a href=" openings': (n) => '<a href="'.repeat(Math.ceil(n / 9)),
+    'unterminated openings with text between': (n) => '<a href="/x" title=\'y and some words '.repeat(Math.ceil(n / 38)),
+    'unterminated single-quote and brace openings': (n) => "<a title='x {y ".repeat(Math.ceil(n / 15)),
+    'bare < and </ everywhere': (n) => '< a </ b <1 <a '.repeat(Math.ceil(n / 15)),
+    'unterminated comments': (n) => '<!-- x '.repeat(Math.ceil(n / 7)),
+    'unterminated code fences': (n) => '```js x\n'.repeat(Math.ceil(n / 8)).slice(0, n) + '~~~',
+    'many [ with no ](': (n) => '[a '.repeat(Math.ceil(n / 3)),
+    'many ![ with no ](': (n) => '![a '.repeat(Math.ceil(n / 4)),
+    'many & with no ;': (n) => '&#123456 &abc '.repeat(Math.ceil(n / 14)),
+    'many backticks': (n) => '`a `b '.repeat(Math.ceil(n / 6)),
+  };
+  for (const [name, make] of Object.entries(shapes)) {
+    it(`stays near linear: ${name}`, () => {
+      const run = (n: number) => () => markdownToText(make(n), { keepLinkTargets: true });
+      run(20_000)();
+      expect(cpu(run(80_000)) / Math.max(cpu(run(20_000)), 1000)).toBeLessThan(9);
+    }, 60_000);
+  }
+  it('treats a tag that never closes as text, and ignores a tag over the length cap', () => {
+    expect(markdownToText('a <b title="x and more text').text).toBe('a <b title="x and more text');
+    expect(markdownToText('<a href="/trust"', { keepLinkTargets: true }).text).toBe('<a href="/trust"');
+    expect(markdownToText('x < y and 1 <2 and </ z <').text).toBe('x < y and 1 <2 and </ z <');
+    const long = `<a ${'x '.repeat(3000)}href="/trust">go</a>`;
+    const tooLong = markdownToText(long, { keepLinkTargets: true }).text;
+    expect(tooLong.startsWith('<a x x x')).toBe(true); // the opening tag stays text
+    expect(tooLong.endsWith('href="/trust">go    ')).toBe(true); // the closing tag is its own tag
+    const fits = `<a ${'x '.repeat(1500)}href="/trust">go</a>`;
+    expect(markdownToText(fits, { keepLinkTargets: true }).text).toContain('/trust');
+  });
+  it('lets a later tag close after an earlier one failed', () => {
+    const out = markdownToText('<a href="x <a href="/trust">t</a>', { keepLinkTargets: true }).text;
+    expect(out).toContain('/trust');
+  });
+  it('blanks fenced code and comments, and leaves an unclosed opener as text', () => {
+    expect(markdownToText('a ```x``` b').text).toBe('a         b');
+    expect(markdownToText('a ~~~x b').text).toBe('a ~~~x b');
+    expect(markdownToText('a <!-- x --> b <!-- y').text).toBe('a            b <!-- y');
+    expect(markdownToText('~~~\nx\n~~~ ```y```\n~~~z').text).toBe('   \n \n~~~          \n~~~z'.replace('~~~          ', '           '));
   });
 });

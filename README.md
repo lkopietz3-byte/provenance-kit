@@ -188,13 +188,52 @@ const NAMED = {
   hellip: '\u2026', lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
 };
 const ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));/g;
-// A tag, allowing quoted attribute values and {braces} to hold a ">".
-const TAG = /<\/?[A-Za-z](?:"[^"]*"|'[^']*'|\{[^{}]*\}|[^<>"'{}])*>/g;
+const MAX_TAG = 4096; // a "<" with no closing ">" within this many characters is text
 // One attribute: whitespace, its name, then an optional value. Reading attributes
 // one after another keeps text inside a value (title='href="/trust"') from
 // counting, and `data-href` has a different name from `href`.
 const ATTRIBUTE = /\s([^\s"'=<>\/{}]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\{[^{}]*\})|([^\s"'<>{}]+)))?/gd;
 const BRACED_STRING = /^\{\s*["'`]([^"'`]*)["'`]\s*\}$/d;
+
+/** Index of the ">" that closes the tag starting at `start`, or -1. Quoted values and {braces} may hold a ">". */
+function tagEnd(text, start) {
+  const limit = Math.min(text.length, start + MAX_TAG);
+  let quote = '';
+  let depth = 0;
+  for (let i = start + 1; i < limit; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === '"' || c === "'" || (depth > 0 && c === '`')) {
+      quote = c;
+    } else if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      if (depth > 0) depth--;
+    } else if (depth === 0 && c === '>') {
+      return i;
+    } else if (depth === 0 && c === '<') {
+      return -1; // another tag starts first: this one never closed
+    }
+  }
+  return -1;
+}
+
+/** Replace each complete tag with `replace(tag)`. Walks the text once, so the cost is linear. */
+function mapTags(text, replace) {
+  let out = '';
+  let copied = 0;
+  for (let i = text.indexOf('<'); i !== -1; i = text.indexOf('<', i + 1)) {
+    const name = text[i + 1] === '/' ? text[i + 2] : text[i + 1];
+    if (name === undefined || !/[A-Za-z]/.test(name)) continue;
+    const end = tagEnd(text, i);
+    if (end === -1) continue;
+    out += text.slice(copied, i) + replace(text.slice(i, end + 1));
+    copied = end + 1;
+    i = end;
+  }
+  return out + text.slice(copied);
+}
 
 /** [offset, text] of each real `href` value in one tag. */
 function hrefValues(tag) {
@@ -206,6 +245,38 @@ function hrefValues(tag) {
     if (braced) found.push([m.indices[4][0] + braced.indices[1][0], braced[1]]);
   }
   return found;
+}
+
+/**
+ * Blank each `opener ... closer` span (code fences, comments); a closer defaults
+ * to the opener. An opener with no closer after it is text, and so is every later
+ * one of the same kind, so each opener is searched for at most once per match.
+ */
+function blankSpans(text, openers, closer) {
+  const next = new Map(openers.map((o) => [o, -2])); // -2: not looked up yet, -1: none left
+  let out = '';
+  let copied = 0;
+  for (;;) {
+    let start = -1;
+    let open = '';
+    for (const [o, known] of next) {
+      let found = known;
+      if (found === -1) continue;
+      if (found < copied) found = text.indexOf(o, copied);
+      next.set(o, found);
+      if (found !== -1 && (start === -1 || found < start)) [start, open] = [found, o];
+    }
+    if (start === -1) break;
+    const close = closer ?? open;
+    const stop = text.indexOf(close, start + open.length);
+    if (stop === -1) {
+      next.set(open, -1);
+      continue;
+    }
+    out += text.slice(copied, start) + blank(text.slice(start, stop + close.length));
+    copied = stop + close.length;
+  }
+  return out + text.slice(copied);
 }
 
 function decodeEntity(dec, hex, name) {
@@ -225,12 +296,12 @@ function decodeEntity(dec, hex, name) {
  */
 function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
   let t = raw;
-  t = t.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, blank); // fenced code
-  t = t.replace(/<!--[\s\S]*?-->/g, blank); // comments
+  t = blankSpans(t, ['```', '~~~']); // fenced code
+  t = blankSpans(t, ['<!--'], '-->'); // comments
   t = t.replace(/^(?:import|export)\s.*$/gm, blank); // MDX imports and exports
   // HTML and JSX tags, even over several lines, before inline code so that an
   // href written as href={`/trust`} is read; keep real href values if asked.
-  t = t.replace(TAG, (tag) => {
+  t = mapTags(t, (tag) => {
     const out = blank(tag).split('');
     if (keepLinkTargets) {
       for (const [at, value] of hrefValues(tag)) {
@@ -240,10 +311,10 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
     return out.join('');
   });
   t = t.replace(/`[^`\n]*`/g, blank); // inline code, and anything a tag step kept inside it
-  t = t.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, blank); // images
+  t = t.replace(/!\[[^\]\n]{0,300}\]\([^)\n]{0,600}\)/g, blank); // images (labels up to 300 characters, targets up to 600: bounded, so the cost stays linear)
   // Links: blank the brackets and parentheses where they stand; keep the label,
   // and the target too when asked, so a link can serve as a check reference.
-  t = t.replace(/\[([^\]\n]*)\]\(([^)\n]*)\)/g, (m, label, url) => ` ${label}  ${keepLinkTargets ? url : blank(url)} `);
+  t = t.replace(/\[([^\]\n]{0,300})\]\(([^)\n]{0,600})\)/g, (m, label, url) => ` ${label}  ${keepLinkTargets ? url : blank(url)} `);
   t = t.replace(/\*\*|__/g, '  '); // emphasis markers
   t = t.replace(/\|/g, ' '); // table pipes
   for (const word of allow) t = t.split(word).join(' '.repeat(word.length)); // known-good phrases
