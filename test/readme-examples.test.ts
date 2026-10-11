@@ -22,19 +22,20 @@ function example<T>(name: string, returns: string): T {
   return vm.runInNewContext(`(() => {\n${code}\nreturn ${returns};\n})()`, {}) as T;
 }
 
+type Extract = (raw: string, options?: object) => { text: string; locate: (line: number, column: number) => { line: number; column: number } };
+const { markdownToText } = example<{ markdownToText: Extract }>('extract', '{ markdownToText }');
+
 describe('README: compliance claims need an evidence link', () => {
   const { complianceRules, complianceOptions } = example<{
     complianceRules: CopyRule[];
     complianceOptions: ScanCopyOptions;
   }>('compliance', '{ complianceRules, complianceOptions }');
-  const { markdownToText } = example<{ markdownToText: (raw: string, o?: object) => string }>(
-    'extract',
-    '{ markdownToText }',
-  );
-  const run = (raw: string, options: ScanCopyOptions = complianceOptions) =>
-    scanCopy([{ id: 'p.md', text: markdownToText(raw, { keepLinkTargets: true }) }], complianceRules, options).offenses.map(
-      (o) => [o.ruleId, o.line, o.column],
-    );
+  const run = (raw: string, options: ScanCopyOptions = complianceOptions, extract: object = { keepLinkTargets: true }) =>
+    scanCopy([{ id: 'p.md', text: markdownToText(raw, extract).text }], complianceRules, options).offenses.map((o) => [
+      o.ruleId,
+      o.line,
+      o.column,
+    ]);
 
   it('catches its own planted samples', () => {
     expect(plantedViolationsFail(complianceRules, complianceOptions).ok).toBe(true);
@@ -43,6 +44,13 @@ describe('README: compliance claims need an evidence link', () => {
     expect(run('We are SOC 2 compliant.')).toEqual([['compliance-framework-claim', 1, 8]]);
     expect(run('We are SOC 2 compliant ([report](/trust)).')).toEqual([]);
     expect(run('Our servers are compliant with HIPAA.')).toEqual([['compliance-claim-framework', 1, 17]]);
+  });
+  it('keeps an HTML or JSX link target when asked, and only then', () => {
+    expect(run('<a href="/trust">We are SOC 2 certified</a>.')).toEqual([]);
+    expect(run("We are SOC 2 certified (<a class='x' href='/security'>details</a>).")).toEqual([]);
+    expect(run('We are SOC 2 certified (<a href={"/compliance"}>details</a>).')).toEqual([]);
+    expect(run('<a href="/trust">We are SOC 2 certified</a>.', complianceOptions, {})).toHaveLength(1);
+    expect(run('<a href="/pricing">We are SOC 2 certified</a>.')).toHaveLength(1);
   });
   it('flags table rows that say Compliant with nothing beside them', () => {
     expect(run('| Framework | Status |\n| --- | --- |\n| ESIGN / UETA | Compliant |\n| SOC 2 | Compliant |').map((o) => o[1])).toEqual([3, 4]);
@@ -61,10 +69,6 @@ describe('README: compliance claims need an evidence link', () => {
 });
 
 describe('README: markdownToText', () => {
-  const { markdownToText } = example<{ markdownToText: (raw: string, o?: object) => string }>(
-    'extract',
-    '{ markdownToText }',
-  );
   const sample = [
     'import Chart from "./chart";',
     '# Pricing',
@@ -79,32 +83,77 @@ describe('README: markdownToText', () => {
     '<!-- guarantee -->',
     '| Plan | Note |',
   ].join('\n');
+  const GUARANTEE: CopyRule[] = [
+    { id: 'g', kind: 'banned', pattern: 'guarantee', reason: 'x' },
+    { id: 'gr', kind: 'banned', pattern: 'guaranteed returns', reason: 'x' },
+  ];
+  const hits = (raw: string, rules: CopyRule[] = GUARANTEE, options: object = {}) => {
+    const { text, locate } = markdownToText(raw, options);
+    return scanCopy([{ id: 'p.mdx', text }], rules).offenses.map((o) => [o.ruleId, o.line, o.column, locate(o.line, o.column)]);
+  };
 
-  it('keeps every line break and the text length', () => {
-    const out = markdownToText(sample);
-    expect(out.length).toBe(sample.length);
-    expect([...out].map((c) => c === '\n')).toEqual([...sample].map((c) => c === '\n'));
+  it('keeps every line break, and the length when nothing is decoded', () => {
+    const { text } = markdownToText(sample);
+    expect(text.length).toBe(sample.length - '&nbsp;'.length + 1);
+    expect(text.split('\n').length).toBe(sample.split('\n').length);
+    const plain = sample.replace('&nbsp;', ' ');
+    const out = markdownToText(plain).text;
+    expect(out.length).toBe(plain.length);
+    expect([...out].map((c) => c === '\n')).toEqual([...plain].map((c) => c === '\n'));
   });
   it('keeps prose where it was and blanks syntax and code', () => {
-    const out = markdownToText(sample);
-    expect(out.split('\n')[3]).toMatch(/^We {3}guarantee {3}a fast start/);
-    expect(out).not.toContain('Chart');
-    expect(out).not.toContain('const guarantee');
-    expect(out).not.toContain('<!--');
-    expect(out).toMatch(/Estimates {6}only\./);
+    const { text } = markdownToText(sample);
+    expect(text.split('\n')[3]).toMatch(/^We {3}guarantee {3}a {2}fast start\s+with/);
+    expect(text).not.toContain('Chart');
+    expect(text).not.toContain('const guarantee');
+    expect(text).not.toContain('<!--');
+    expect(text).toContain('Estimates only.');
   });
   it('gives offenses the line and column of the original file', () => {
-    const raw = sample;
-    const offense = scanCopy([{ id: 'p.mdx', text: markdownToText(raw) }], [
-      { id: 'g', kind: 'banned', pattern: 'guarantee', reason: 'x' },
-    ]).offenses;
-    expect(offense.map((o) => [o.line, o.column])).toEqual([[4, 6]]);
-    expect(raw.split('\n')[3]?.slice(5, 14)).toBe('guarantee');
+    expect(hits(sample)).toEqual([['g', 4, 6, { line: 4, column: 6 }]]);
+    expect(sample.split('\n')[3]?.slice(5, 14)).toBe('guarantee');
+  });
+  it('keeps a Markdown link label where it was (no column shift)', () => {
+    expect(hits('[guarantee](/x)')).toEqual([['g', 1, 2, { line: 1, column: 2 }]]);
+    expect(hits('See [guarantee](/x) and [guarantee](/y).').map((h) => h[3])).toEqual([
+      { line: 1, column: 6 },
+      { line: 1, column: 26 },
+    ]);
+    expect(hits('x\n  [a](/b) [guarantee](/x)').map((h) => h[3])).toEqual([{ line: 2, column: 12 }]);
+  });
+  it('decodes numeric and named entities so they cannot hide a phrase', () => {
+    for (const raw of [
+      'guaranteed &#114;eturns',
+      'guaranteed &#x72;eturns',
+      'guaranteed &#X72;eturns',
+      'guaranteed&nbsp;returns',
+      'guar&#97;nteed returns',
+      'guaranteed r&#101;turns',
+    ]) {
+      expect(hits(raw).map((h) => h[0]), raw).toContain('gr');
+    }
+  });
+  it('maps positions back across a decoded entity', () => {
+    const raw = 'a &#114; b\nxx &#x72;&#x72; guarantee';
+    const found = hits(raw);
+    expect(found.map((h) => [h[1], h[2]])).toEqual([[2, 7]]);
+    expect(found.map((h) => h[3])).toEqual([{ line: 2, column: 17 }]);
+    expect(raw.split('\n')[1]?.slice(16, 25)).toBe('guarantee');
+    expect(hits('\u{1F600} &amp; &#128512; guarantee').map((h) => h[3])).toEqual([{ line: 1, column: 19 }]);
+  });
+  it('treats an unknown or out-of-range entity as a space, not as text', () => {
+    expect(markdownToText('a&bogus;b &#0; &#xD800; &#1114112; &#10; z').text).toBe(`a b${' '.repeat(9)}z`);
+  });
+  it('keeps CRLF and lone CR line breaks', () => {
+    expect(hits('x\r\n[a] guarantee').map((h) => h[3])).toEqual([{ line: 2, column: 5 }]);
+    expect(hits('x\r[a] guarantee').map((h) => h[3])).toEqual([{ line: 2, column: 5 }]);
   });
   it('can keep link targets and blank known proper nouns', () => {
-    expect(markdownToText('[docs](/trust)', { keepLinkTargets: true })).toBe('docs (/trust) ');
+    expect(markdownToText('[docs](/trust)', { keepLinkTargets: true }).text).toBe(' docs  /trust ');
+    expect(markdownToText('<a href="/trust" title="x">t</a>', { keepLinkTargets: true }).text).toContain('/trust');
+    expect(markdownToText('<a href="/trust" title="x">t</a>', { keepLinkTargets: true }).text).not.toContain('title');
     const noun = 'American Institute of Certified Public Accountants';
-    const out = markdownToText(`Run by the ${noun}.`, { allow: [noun] });
+    const out = markdownToText(`Run by the ${noun}.`, { allow: [noun] }).text;
     expect(scanCopy([{ id: 'a', text: out }], [{ id: 'c', kind: 'banned', pattern: 'certified', reason: 'x' }]).offenses).toEqual([]);
   });
 });

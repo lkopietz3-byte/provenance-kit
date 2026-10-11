@@ -198,6 +198,13 @@ export interface PlantedViolationReport {
   results: PlantedViolationResult[];
 }
 
+const HAVE_FORM = String.raw`(?:(?<![\p{L}\p{N}'])(?:has|have|had|having)|(?<=\p{L})'ve)\s+(?:(?:also|already|often|repeatedly|consistently|long|since|again)\s+)?`;
+const PROVEN_VERB_COMPLEMENT = String.raw`(?:to|that|itself|themselves|ourselves|myself|himself|herself|yourself|useful|helpful|valuable|invaluable)(?![\p{L}\p{N}])`;
+const PROVEN_CLAIM = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:(?<!${HAVE_FORM})proven|(?<=${HAVE_FORM})proven(?!\s+${PROVEN_VERB_COMPLEMENT}))(?![\p{L}\p{N}])`,
+  'iu',
+);
+
 const strengthRule = (word: string, reason: string): CopyRule =>
   Object.freeze<CopyRule>({ id: `strength-${word}`, kind: 'strength', pattern: word, reason, wholeWord: true });
 
@@ -216,12 +223,15 @@ export const DEFAULT_STRENGTH_RULES: readonly CopyRule[] = Object.freeze([
   strengthRule('accurate', 'Says how close the numbers are. Link the check or the method, or reword.'),
   strengthRule('audited', 'Says an audit happened. Link the audit or its scope, or reword.'),
   strengthRule('certified', 'Says a certification exists. Link it, or reword.'),
-  // "has proven useful" is a verb, not a claim; "the proven choice" is.
+  // "has proven useful" and "has proven that" are verbs, not claims; "the proven
+  // choice", "have proven results" and "has proven security" are. After a form of
+  // "have" the word is a verb only when what follows is "to", "that", a reflexive
+  // or one of a few adjectives that describe a thing's usefulness; every other
+  // use is reported.
   Object.freeze<CopyRule>({
     id: 'strength-proven',
     kind: 'strength',
-    pattern:
-      /(?<!(?<![\p{L}\p{N}'])(?:has|have|had|having|'ve)\s+(?:(?:also|already|often|repeatedly|consistently|long|since)\s+)?)(?<![\p{L}\p{N}])proven(?![\p{L}\p{N}])/iu,
+    pattern: PROVEN_CLAIM,
     reason: 'Says the matter is settled. Link the evidence or the check, or reword.',
     sample: 'It is the proven choice.',
   }),
@@ -1145,14 +1155,18 @@ function scan(sources: CopySource[], rules: Compiled[], config: ScanConfig): Cop
 }
 
 /**
- * The key an offense has in a baseline: source id, rule id and line text,
- * separated by " | ". It does not hold the line number, so adding or moving
- * lines elsewhere in a file does not change it. Save
+ * The key an offense has in a baseline: a JSON array of three strings, source
+ * id, rule id and line text (`["docs/a.md","no-guarantee","We guarantee it."]`).
+ * JSON quoting keeps the three parts apart whatever characters the ids hold, so
+ * two different offenses never share a key. The key does not hold the line
+ * number, so adding or moving lines elsewhere in a file does not change it. This
+ * format is part of the package's contract and stays stable: a baseline file
+ * written by one version works with the next. Save
  * `scanCopy(...).offenses.map(copyBaselineKey)` once and pass it back as
  * `options.baseline`.
  */
 export function copyBaselineKey(offense: Pick<CopyOffense, 'sourceId' | 'ruleId' | 'context'>): string {
-  return `${offense.sourceId} | ${offense.ruleId} | ${offense.context}`;
+  return JSON.stringify([offense.sourceId, offense.ruleId, offense.context]);
 }
 
 function applyBaseline(

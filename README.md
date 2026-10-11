@@ -151,7 +151,7 @@ const complianceOptions = {
 ```
 
 With those options, `We are SOC 2 compliant.` is an offense,
-`We are SOC 2 compliant ([report](/trust)).` is clean (extract with `keepLinkTargets: true` so the link is visible to the gate), and
+`We are SOC 2 compliant ([report](/trust)).` is clean (extract with `keepLinkTargets: true` so the link is visible to the gate; it keeps both Markdown link targets and HTML `href` values), and
 `We are not SOC 2, ISO 27001, or HIPAA certified.` is clean. The rules start the
 match at the first framework name, so a negation in front of a list of frameworks
 covers the whole match. (A rule on the word `certified` alone would start after
@@ -168,18 +168,39 @@ supports the claim.
 
 1. **Get plain text.** The gate reads text, not markup, and its line and column
    refer to the text you pass. The extractor below blanks Markdown, MDX and HTML
-   syntax with spaces and keeps every line and column where it was, so offenses
-   point into the file a writer edits. It keeps link text (and, with
-   `keepLinkTargets`, link URLs, so a link can serve as a check reference), and it
-   can blank known proper nouns you do not want scanned, such as an organization
-   name that contains a listed word. Read its output on a few pages before you
-   trust it.
+   syntax with spaces, so offenses point into the file a writer edits without any
+   mapping. The one exception is a character entity: `&#114;` and `&nbsp;` are
+   decoded (otherwise `guaranteed &#114;eturns` would slip past a rule), which
+   makes that stretch shorter, so it returns `locate(line, column)` to turn a
+   position in the extracted text into a position in the file. It keeps link
+   text and, with `keepLinkTargets`, link targets (Markdown links and HTML or JSX
+   `href` values), so a link can serve as a check reference. It can also blank
+   known proper nouns you do not want scanned, such as an organization name that
+   contains a listed word. Read its output on a few pages before you trust it.
 
 <!-- example:extract -->
 ```js
-const blank = (text) => text.replace(/[^\n]/g, ' '); // same length, same line breaks
-const ENTITIES = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", mdash: '\u2014', ndash: '\u2013' };
+const blank = (text) => text.replace(/[^\r\n]/g, ' '); // same length, same line breaks
+const NAMED = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", mdash: '\u2014', ndash: '\u2013',
+  hellip: '\u2026', lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
+};
+const ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));/g;
+const HREF = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*["'`]([^"'`]*)["'`]\s*\})/gi;
 
+function decodeEntity(dec, hex, name) {
+  const code = dec !== undefined ? Number(dec) : hex !== undefined ? parseInt(hex, 16) : undefined;
+  if (code === undefined) return NAMED[name.toLowerCase()] ?? ' ';
+  const okay = code >= 32 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff);
+  return okay ? String.fromCodePoint(code) : ' ';
+}
+
+/**
+ * Plain text from Markdown, MDX or HTML. Everything except character entities is
+ * blanked in place, so text, lines and columns stay where they were. An entity
+ * (`&#114;`, `&#x72;`, `&nbsp;`) is decoded, which changes the length of that
+ * stretch, so `locate(line, column)` maps a position in `text` back to the file.
+ */
 function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
   let t = raw;
   t = t.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, blank); // fenced code
@@ -187,15 +208,63 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
   t = t.replace(/^(?:import|export)\s.*$/gm, blank); // MDX imports and exports
   t = t.replace(/`[^`\n]*`/g, blank); // inline code
   t = t.replace(/!\[[^\]\n]*\]\([^)\n]*\)/g, blank); // images
-  t = t.replace(/\[([^\]\n]*)\]\(([^)\n]*)\)/g, (m, label, url) =>
-    (keepLinkTargets ? `${label} (${url})` : label).padEnd(m.length),
-  ); // links
-  t = t.replace(/<\/?[A-Za-z][^<>]*>/g, blank); // HTML and JSX tags, even over several lines
-  t = t.replace(/&(#\d+|[a-z]+);/gi, (m, name) => (ENTITIES[name.toLowerCase()] ?? ' ').padEnd(m.length));
+  // Links: blank the brackets and parentheses where they stand; keep the label,
+  // and the target too when asked, so a link can serve as a check reference.
+  t = t.replace(/\[([^\]\n]*)\]\(([^)\n]*)\)/g, (m, label, url) => ` ${label}  ${keepLinkTargets ? url : blank(url)} `);
+  // HTML and JSX tags, even over several lines; keep an href value if asked.
+  t = t.replace(/<\/?[A-Za-z][^<>]*>/g, (tag) => {
+    const out = blank(tag).split('');
+    if (keepLinkTargets) {
+      for (const m of tag.matchAll(HREF)) {
+        const value = m[1] ?? m[2] ?? m[3];
+        const at = m.index + m[0].lastIndexOf(value);
+        for (let i = 0; i < value.length; i++) if (value[i] !== '\n' && value[i] !== '\r') out[at + i] = value[i];
+      }
+    }
+    return out.join('');
+  });
   t = t.replace(/\*\*|__/g, '  '); // emphasis markers
   t = t.replace(/\|/g, ' '); // table pipes
   for (const word of allow) t = t.split(word).join(' '.repeat(word.length)); // known-good phrases
-  return t;
+
+  // Decode entities, remembering where each output unit came from.
+  let text = '';
+  const origin = [];
+  let last = 0;
+  const copy = (from, to) => {
+    for (let i = from; i < to; i++) origin.push(i);
+    text += t.slice(from, to);
+  };
+  for (const m of t.matchAll(ENTITY)) {
+    copy(last, m.index);
+    const decoded = decodeEntity(m[1], m[2], m[3]);
+    for (let i = 0; i < decoded.length; i++) origin.push(m.index);
+    text += decoded;
+    last = m.index + m[0].length;
+  }
+  copy(last, t.length);
+
+  function locate(line, column) {
+    let offset = 0;
+    for (let l = 1; l < line; l++) {
+      const next = /\r\n|\n|\r/g;
+      next.lastIndex = offset;
+      const m = next.exec(text);
+      if (m === null) break;
+      offset = m.index + m[0].length;
+    }
+    for (let c = 1; c < column; c++) offset += text.codePointAt(offset) > 0xffff ? 2 : 1;
+    const rawOffset = origin[offset] ?? raw.length;
+    let rawLine = 1;
+    let lineStart = 0;
+    for (const m of raw.slice(0, rawOffset).matchAll(/\r\n|\n|\r/g)) {
+      rawLine++;
+      lineStart = m.index + m[0].length;
+    }
+    return { line: rawLine, column: Array.from(raw.slice(lineStart, rawOffset)).length + 1 };
+  }
+
+  return { text, locate };
 }
 ```
 
@@ -208,8 +277,9 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
    and a gate that is noisy gets switched off.
 3. **Record a baseline so the build can go green today.** The baseline lists the
    offenses you have accepted for now and hides exactly those. Each entry is the
-   source id, the rule id and the text of the line (not its number), so adding
-   lines elsewhere does not change it:
+   source id, the rule id and the text of the line (not its number), written as a
+   JSON array of those three strings, so adding lines elsewhere does not change it
+   and ids that contain any character cannot collide:
 
 ```js
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -528,8 +598,10 @@ const { offenses, missing, sourcesScanned, suppressed, staleBaseline } = scanCop
   with any regex.
 - **Offense context.** `context` is the text of the line the match starts on
   (whitespace collapsed; a window around the match on a line over 240
-  characters). `copyBaselineKey(offense)` turns an offense into the baseline entry
-  `source | rule | context`.
+  characters). `copyBaselineKey(offense)` turns an offense into the baseline entry, the JSON
+  array `[sourceId, ruleId, context]` as a string (for example
+  `["docs/a.md","no-guarantee","We guarantee it."]`). The format is stable: a
+  baseline file written by one version keeps working with the next.
 - **Baseline.** `options.baseline` is an array of those entries. Each hides one
   offense with the same source, rule and line text; `suppressed` counts them and
   `staleBaseline` lists entries that matched nothing. A malformed baseline throws.
@@ -664,7 +736,7 @@ Every export from `provenance-kit`, values and types:
 | `CopyOffense`, `MissingStatement`, `CopyScanResult` | Types: `{ sourceId, ruleId, kind, line, column, match, context, reason, replacement }`; `{ id, phrase, sourceIds }`; `{ offenses, missing, sourcesScanned, suppressed, staleBaseline }` |
 | `DEFAULT_STRENGTH_RULES` | Value: 4 starter strength-word rules (`accurate`, `audited`, `certified`, `proven`). Frozen (including each entry). |
 | `OPTIONAL_STRENGTH_RULES` | Value: 2 opt-in strength-word rules (`verified`, `accuracy`). Frozen (including each entry). |
-| `copyBaselineKey(offense)` | Function: the baseline entry for an offense, `source \| rule \| line text`. |
+| `copyBaselineKey(offense)` | Function: the baseline entry for an offense: a JSON array of source id, rule id and line text, as a string. Stable format. |
 | `scanCopy(sources, rules, options?)` | Function: the copy gate, returns `CopyScanResult`. Throws `TypeError` or `RangeError` for malformed input. |
 | `assertCopyClean(sources, rules, options?)` | Function: like `scanCopy`, but throws `CopyGateError` when there is any offense or missing statement. |
 | `CopyGateError` | Value: `Error` subclass thrown by `assertCopyClean`, with `offenses` and `missing`. |

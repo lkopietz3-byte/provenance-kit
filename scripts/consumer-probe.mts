@@ -118,7 +118,7 @@ const scanOptions: ScanCopyOptions = {
   caseSensitive: false,
   negationWindow: 40,
   extendedNegation: false,
-  baseline: ['home | uptime | We have 99.99% uptime.'],
+  baseline: ['["home","uptime","We have 99.99% uptime."]'],
 };
 const result: CopyScanResult = scanCopy(sources, ledger, scanOptions);
 const firstOffense: CopyOffense | undefined = result.offenses[0];

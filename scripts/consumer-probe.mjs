@@ -163,7 +163,7 @@ assert.equal(scanCopy([{ id: 'a', text: 'Each figure carries its provenance. You
 assert.equal(scanCopy([{ id: 'a', text: 'Prices are verified.' }], OPTIONAL_STRENGTH_RULES).offenses.length, 1);
 const pending = scanCopy([{ id: 'a', text: 'Intro.\nWe guarantee it.' }], [{ id: 'g', kind: 'banned', pattern: 'guarantee', reason: 'r' }]);
 const accepted = pending.offenses.map(copyBaselineKey);
-assert.deepEqual(accepted, ['a | g | We guarantee it.']);
+assert.deepEqual(accepted, ['["a","g","We guarantee it."]']);
 assert.deepEqual(
   scanCopy([{ id: 'a', text: 'New.\nIntro.\nWe guarantee it.' }], [{ id: 'g', kind: 'banned', pattern: 'guarantee', reason: 'r' }], { baseline: accepted }).offenses,
   [],

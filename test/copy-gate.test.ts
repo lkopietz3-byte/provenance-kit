@@ -295,7 +295,8 @@ describe('strength words', () => {
   });
   it('flags every default strength word', () => {
     for (const rule of STRENGTH_ALL) {
-      expect(strength(`Our work is ${rule.pattern as string}.`), rule.id).toEqual([rule.id]);
+      const word = typeof rule.pattern === 'string' ? `Our work is ${rule.pattern}.` : (rule.sample as string);
+      expect(strength(word), rule.id).toEqual([rule.id]);
     }
   });
   it('extends by spreading the default list', () => {
