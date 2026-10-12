@@ -5,7 +5,7 @@ Mapped on **2026-09-26** from connected GitHub, Vercel, and Supabase metadata. T
 ## Identity and repository settings
 
 - Repository: [lkopietz3-byte/provenance-kit](https://github.com/lkopietz3-byte/provenance-kit)
-- Purpose: A library for labeling public claims with an evidence tier (verified, modeled or editorial) as structured data, and checking by software that their wording is not stronger than the tier allows. It is a wording lint; it does not verify that a claim is true.
+- Purpose: A copy regression gate for wording a team has banned or retracted (`scanCopy`), and a library for labeling public claims with an evidence tier (verified, modeled or editorial) as structured data, and checking by software that their wording is not stronger than the tier allows. It is a wording lint; it does not verify that a claim is true.
 - GitHub visibility: **public**; default branch: **`main`**; archived: **no**.
 - Product stage, owner, production health, and GitHub protection/settings beyond the fields above: **not verified**.
 

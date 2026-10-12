@@ -450,15 +450,15 @@ depend on the product and are not included here.
 type ProvenanceTier = 'verified' | 'modeled' | 'editorial';
 ```
 
-- **`verified`** — a structural fact checked directly against the
+- **`verified`**: a structural fact checked directly against the
   source's own published material. Checkable, and someone checked it.
-- **`modeled`** — an estimate derived from public signal. Explicitly
+- **`modeled`**: an estimate derived from public signal. Explicitly
   **not** a measurement, **not** a guarantee, and **not** a "proprietary
   dataset."
-- **`editorial`** — stated judgment or opinion, clearly marked as such.
+- **`editorial`**: stated judgment or opinion, clearly marked as such.
 
 This is a deliberately minimal set. Resist adding a fourth tier unless
-there's a genuinely generic reason — most "we need a special case" urges
+there's a genuinely generic reason: most "we need a special case" urges
 are better solved with a more specific `sourceRef` or a domain wrapper
 around these three, not a fourth epistemic state every consumer of the
 library then has to learn to handle.
@@ -543,7 +543,7 @@ validateClaims({
 });
 ```
 
-By default it checks against `DEFAULT_CERTAINTY_PHRASES` — a small,
+By default it checks against `DEFAULT_CERTAINTY_PHRASES`, a small,
 generic starter list (`"(verified)"`, `"independently verified"`,
 `"proprietary dataset"`, `"reverse-engineered"`, `"guaranteed"`, …).
 **Override it.** Every product accumulates its own vocabulary of
@@ -561,7 +561,7 @@ validateClaims(claims, {
 });
 ```
 
-Properly negated phrases are not flagged — `"these figures are not a
+Properly negated phrases are not flagged: `"these figures are not a
 proprietary dataset"` passes clean, because the scanner checks the text
 immediately before each match, back to the start of its clause, for a
 negation word (`not`, `isn't`, `without`, `never`, `no one`, `unable`, …). A
@@ -579,7 +579,7 @@ overclaim; see Honest limits.
 Negation handling is a heuristic. It trades a few missed overclaims for far
 fewer false alarms on honest disclaimers. On a 137-sentence stress set of real
 marketing, help-center and legal copy (70 overclaims, 67 honest sentences) it
-scores precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes the unreleased version after it).
+scores precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes 0.3.0).
 A team that would rather review every certainty word can turn all of it off:
 
 ```ts
@@ -626,7 +626,7 @@ const definitions = {
   },
   modeled: {
     label: 'Modeled estimate',
-    shortDescription: 'An estimate from public signal — not a guarantee.',
+    shortDescription: 'An estimate from public signal, not a guarantee.',
     criteria: 'Derived from publicly observable patterns, not measured directly.',
   },
   editorial: {
@@ -640,11 +640,12 @@ provenanceBadgeText('modeled', definitions);
 // => "Modeled estimate"
 
 provenanceBadgeText('modeled', definitions, { includeShortDescription: true });
-// => "Modeled estimate — An estimate from public signal — not a guarantee."
+// => "Modeled estimate" + " \u2014 " + "An estimate from public signal, not a guarantee."
+// (the label, a space, an em dash, a space, then the short description)
 ```
 
 Use the returned string in a React `<span>`, a Vue template, a plain
-`<div>` — the library has no rendering opinion at all.
+`<div>`; the library has no rendering opinion at all.
 
 ### 4. Scaffold a methodology page
 
@@ -659,7 +660,7 @@ const markdown = methodologyPageOutline(definitions, {
 Produces a Markdown skeleton with a `## The tiers` section filled in from
 your definitions, plus `TODO`-marked sections for the parts that are
 genuinely domain-specific (what your product doesn't do, your correction
-log, your FAQ) — this library can't honestly know those for you.
+log, your FAQ) this library can't honestly know those for you.
 
 ## Copy gate reference
 
@@ -829,12 +830,12 @@ Every export from `provenance-kit`, values and types:
 | `ProvenanceTierDefinition` | Type: caller-supplied `{ label, shortDescription, criteria }` |
 | `ProvenanceTierDefinitions` | Type: `Partial<Record<ProvenanceTier, ProvenanceTierDefinition>>` |
 | `Claim` | Type: `{ id, text, tier, sourceRef? }` |
-| `CertaintyPhraseRule` | Type: `{ phrase, reason? }` — one entry in a certainty-phrase list |
-| `CertaintyPhraseInput` | Type: `string \| CertaintyPhraseRule` — what you may pass in `certaintyPhrases` |
+| `CertaintyPhraseRule` | Type: `{ phrase, reason? }`, one entry in a certainty-phrase list |
+| `CertaintyPhraseInput` | Type: `string \| CertaintyPhraseRule`, what you may pass in `certaintyPhrases` |
 | `DEFAULT_CERTAINTY_PHRASES` | Value: 11-entry generic starter list of overclaiming phrases. Frozen (including each entry). |
 | `ClaimOffenseReason` | Type: `'certainty_phrase_without_backing_tier' \| 'missing_source_ref' \| 'unknown_tier'` |
-| `ClaimOffense` | Type: one flagged problem — `{ claimId, claimText, phrase, reason, message, tier }` |
-| `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }` — what `validateClaims` accepts |
+| `ClaimOffense` | Type: one flagged problem: `{ claimId, claimText, phrase, reason, message, tier }` |
+| `ClaimsInput` | Type: `Claim[] \| { text, extractClaims }`, what `validateClaims` accepts |
 | `ValidateClaimsOptions` | Type: `{ certaintyPhrases?, certaintyRequiresTier?, requireSourceRefForTiers?, caseSensitive?, negationWindow? }` |
 | `validateClaims(input, options?)` | Function: scans claims, returns `ClaimOffense[]`. Throws `TypeError` for malformed `input`, claims or options (including a hole in a sparse array, a non-string `id` or `text`, and an unknown option key), and `RangeError` for an out-of-range option. |
 | `CopyRule`, `CopyRuleKind` | Types: one ledger entry `{ id, pattern, reason, replacement?, kind, exemptNegated?, exemptQuoted?, wholeWord?, sample? }` and its kind, `'banned' \| 'retracted' \| 'strength'` |
@@ -857,13 +858,13 @@ Every export from `provenance-kit`, values and types:
 
 - **You need to know if a claim is true.** `validateClaims` is a wording
   lint, not a fact-checker. It checks whether the LANGUAGE a claim uses
-  matches its declared tier — it has no way to know whether a `verified`
+  matches its declared tier, so it has no way to know whether a `verified`
   claim's `sourceRef` actually supports the claim, or whether the claim
   itself is correct. A human (or a separate process) still has to do the
   checking; this library only makes it loud when the wording and the tier
   disagree.
 - **You need to track evidence over time.** This library has no concept of
-  "last checked on" or evidence staleness — `sourceRef` is a single
+  "last checked on" or evidence staleness; `sourceRef` is a single
   point-in-time string, not a record. If what you need is "does this claim
   have a link to evidence, and how long since it was reviewed," that's a
   different, complementary tool (see "Relationship to sibling kits" below).
@@ -1031,14 +1032,14 @@ Every export from `provenance-kit`, values and types:
   so plural and inflected forms match ("guaranteed," "proprietary
   datasets"). This also means a phrase can match as a prefix of an
   unrelated longer word if that word happens to start right after a
-  boundary — this is a deliberate trade-off toward fewer missed overclaims,
+  boundary; this is a deliberate trade-off toward fewer missed overclaims,
   not a guarantee of natural-language-aware matching.
 - **Two default phrases overlap.** `"guarantee"` and `"guaranteed"` are
   both in `DEFAULT_CERTAINTY_PHRASES`; a sentence using "guaranteed" is
   reported twice (once per phrase), not once.
 - **Rendering helpers do not escape their output.** `provenanceBadgeText`
   and `methodologyPageOutline` copy your tier definitions into their
-  return value **verbatim** — no HTML escaping, no Markdown escaping. That
+  return value **verbatim**, with no HTML escaping, no Markdown escaping. That
   is safe when you pass the result to a template that escapes on its own
   (a React/Vue text child, `textContent`), and it is safe when your tier
   definitions are hardcoded in your own source, as in every example above.
@@ -1071,8 +1072,7 @@ Every export from `provenance-kit`, values and types:
 whether a public claim has a linked evidence reference and how long since
 that reference was last reviewed (`{ text, evidenceRef, verifiedAt }`); it
 never opens or checks the reference itself.
-`provenance-kit` never stores a review date and has no concept of staleness
-— it only checks, at a point in time, whether a claim's wording is stronger
+`provenance-kit` never stores a review date and has no concept of staleness. It only checks, at a point in time, whether a claim's wording is stronger
 than its declared tier allows. A product with both concerns (does this
 claim have current evidence, AND does its wording overclaim relative to its
 tier) would reasonably use both libraries side by side; neither replaces
@@ -1084,7 +1084,7 @@ marker that points at an entry in the evidence map you gave the model,
 classifying it as `grounded`, `placeholder`, `ungrounded`, or `invalid`. It is a
 mechanical, sentence-level check; it never decides whether the evidence is true
 or whether the sentence follows from it. `provenance-kit` never looks at
-evidence at all — it only checks whether a claim's certainty-implying wording
+evidence at all; it only checks whether a claim's certainty-implying wording
 matches its declared tier. A pipeline producing AI-generated, tiered claims could
 run `grounding-kit` first (does each sentence cite evidence you supplied) and
 `provenance-kit` second (does its wording overclaim relative to its tier).
@@ -1117,8 +1117,8 @@ entitled to, not as a substitute for that decision.
   `DEFAULT_CERTAINTY_PHRASES` are module-level singletons, `Object.freeze`d
   (including each phrase entry) so one caller mutating them in place can't
   corrupt the default for every other call in the same process. Spread
-  them into your own array to extend — `[...DEFAULT_CERTAINTY_PHRASES,
-  ...yours]` — rather than pushing onto them directly.
+  them into your own array to extend (`[...DEFAULT_CERTAINTY_PHRASES,
+  ...yours]`) rather than pushing onto them directly.
 
 ## License
 

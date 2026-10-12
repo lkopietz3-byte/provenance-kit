@@ -5,10 +5,32 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Fixes from a verdict hunt on real marketing, help-center, legal and pricing
-copy. The `validateClaims` exports and the shape of `ClaimOffense` are unchanged. Some inputs
-that used to be accepted now throw, and some verdicts change in both
-directions; see Changed.
+## [0.3.0] - unreleased
+
+Adds the copy gate and ships fixes from a verdict hunt on real marketing,
+help-center, legal and pricing copy. The `validateClaims` exports and the shape
+of `ClaimOffense` are unchanged. Some inputs that used to be accepted now throw,
+and some verdicts change in both directions; see Breaking changes and Changed.
+
+### Breaking changes
+
+- **Unknown option keys throw `TypeError`** in `validateClaims`,
+  `provenanceBadgeText` and `methodologyPageOutline`. Migration: pass only the
+  documented options (`certaintyPhrases`, `certaintyRequiresTier`,
+  `requireSourceRefForTiers`, `caseSensitive`, `negationWindow` for
+  `validateClaims`; `includeShortDescription`; `title`, `intro`, `tiers`,
+  `productName`), or pick them out of a larger config object before the call.
+- **A blank `title`, `intro` or `productName` throws `RangeError`** in
+  `methodologyPageOutline` (only spaces, zero-width or bidi control
+  characters). Migration: omit the option to get the default, or give it text.
+- **Some verdicts change.** Copy with the negation cues in Fixed (`no one`,
+  `zero`, `lack`, `unable`, `instead of`, `non-` prefixes, negated lists,
+  numbers and abbreviations inside a clause) is reported less often. Copy with
+  the asserting idioms (`nothing beats`, `without doubt`), look-alike Cyrillic
+  or Greek letters, `no-` or `zero-` compounds, or a `certaintyPhrases` entry
+  with trailing whitespace is reported more often. Migration: rerun your claim
+  suite and review the difference. To report every occurrence regardless of
+  negation, pass `negationWindow: 0`.
 
 ### Added
 
@@ -329,8 +351,8 @@ First release.
   Certainty-phrase matching folds Unicode compatibility forms, spacing,
   and hyphenation before comparing, checks a word boundary at the start
   of a match, and treats a configurable window of preceding text as a
-  negation check (with a short list of negation-shaped idioms — "no
-  doubt," "not only" — excluded so they don't wrongly suppress a real
+  negation check (with a short list of negation-shaped idioms ("no
+  doubt," "not only") excluded so they don't wrongly suppress a real
   offense).
 - `DEFAULT_CERTAINTY_PHRASES`: an 11-entry generic starter list of
   overclaiming phrases, frozen against in-place mutation.
@@ -343,6 +365,6 @@ First release.
 
 - `provenanceBadgeText` and `methodologyPageOutline` copy caller-supplied
   definition text into their output verbatim, with no HTML/Markdown
-  escaping. Documented in both TSDoc and the README's Honest limits — see
+  escaping. Documented in both TSDoc and the README's Honest limits; see
   those for when this matters and what to do about it.
 

@@ -6,7 +6,7 @@
   Everything under `devDependencies` is build/test/lint tooling only.
 - `validateClaims` never mutates its input `claims` array or any claim
   object, and never touches `Date.now()`, `Math.random()`, or object key
-  order — for the same input and options, it always returns the same
+  order, so for the same input and options it always returns the same
   output.
 - Caller input is read once. `validateClaims`, `provenanceBadgeText` and
   `methodologyPageOutline` copy claims, options and definitions a single time
@@ -48,7 +48,7 @@
 - `provenanceBadgeText` and `methodologyPageOutline` return plain strings
   with **no HTML/Markdown escaping** of caller-supplied text. This is a
   documented, tested contract (`test/rendering-safety.test.ts`), not an
-  oversight — see the README's Honest limits before rendering
+  oversight; see the README's Honest limits before rendering
   CMS-sourced tier definitions as HTML.
 - The public API surface (the value exports importable at runtime) is
   pinned in `api-surface.json`. A deliberate change to it is made with
@@ -69,13 +69,15 @@ into a throwaway project, imports every `exports` entry by its public
 specifier, diffs the exported names against `api-surface.json`, and runs
 `scripts/consumer-probe.mjs` (a real API exercise) and
 `scripts/consumer-probe.mts` (a strict NodeNext type check) against the
-installed package — not the local source tree.
+installed package, not the local source tree.
 
 ## What is NOT certified
 
 - **Not a fact-checker.** `validateClaims` checks wording against a
   declared tier; it cannot verify that a claim is actually true or that a
-  `sourceRef` actually supports it.
+  `sourceRef` actually supports it. `scanCopy` finds only the wording a
+  ledger lists; a clean scan does not mean a page is honest, and it does not
+  read markup, images or PDFs.
 - **Not a citation/evidence tracker.** No staleness concept, no evidence
   storage beyond a single `sourceRef` string per claim.
 - **Not an exhaustive overclaiming vocabulary.** `DEFAULT_CERTAINTY_PHRASES`
@@ -90,7 +92,7 @@ CI runs [`arethetypeswrong`](https://github.com/arethetypeswrong/arethetypeswron
 (`npm run attw`, which is `attw --pack . --ignore-rules cjs-resolves-to-esm`)
 against the packed tarball after the build step. The `cjs-resolves-to-esm` rule is ignored on
 purpose: this is an ESM-only package (`"type": "module"`, no `require` entry point), so a
-CommonJS consumer must use Node's `require(esm)` support (Node >=20.19 or >=22.12 — see
+CommonJS consumer must use Node's `require(esm)` support (Node >=20.19 or >=22.12; see
 "Runtime support policy" below) rather than a native `require`. A dual CJS+ESM build was
 rejected to avoid the dual-package hazard (two separately-identified copies of the same module,
 with broken `instanceof` checks and duplicated module state across the CJS and ESM entry
@@ -107,7 +109,7 @@ publish it. (You can also run `npm publish` locally; `prepublishOnly` still guar
 
 npm's unpublish policy is deliberately narrow. Within 72 hours of publishing, a version can be
 unpublished only if no other published package depends on it. After 72 hours, unpublishing also
-requires fewer than 300 downloads in the last week and a single maintainer — most released
+requires fewer than 300 downloads in the last week and a single maintainer, and most released
 versions won't qualify either way. A given `name@version` can never be reused, published or
 not, even after an unpublish. Treat unpublish as unavailable: prefer fixing forward with a new
 patch version, and use `npm deprecate <name>@"<range>" "<message>"` to warn consumers off a
@@ -118,7 +120,7 @@ bad release while it stays installable for anyone already pinned to it.
 - **Recommended for production:** Node 22 and 24 (LTS). Node 26 (current) is what the main
   `verify` job runs on.
 - **Compatibility-tested:** Node 20 (CI pins 20.19.0 and 22.12.0, the `require(esm)` floors,
-  as well as the latest 20, 22 and 24). Node 20 is end-of-life — nodejs.org's release page
+  as well as the latest 20, 22 and 24). Node 20 is end-of-life; nodejs.org's release page
   (<https://nodejs.org/en/about/previous-releases>) lists it as `EOL`, with its final release
   dated Mar 24, 2026. The `compat` job in `verify.yml` still runs on Node 20 to catch
   regressions, but that runtime gets no security fixes upstream; don't run production traffic

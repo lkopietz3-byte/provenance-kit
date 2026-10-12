@@ -1,6 +1,6 @@
-# provenance-kit — agent instructions
+# provenance-kit - agent instructions
 
-Label public claims verified, modeled or editorial, then check that their wording is not stronger than the label allows. A wording lint, not a fact-checker.
+A copy regression gate for banned and retracted wording (`scanCopy`), plus a lint that labels public claims verified, modeled or editorial and checks that their wording is not stronger than the label allows (`validateClaims`). Wording checks, not fact-checkers.
 
 ## Read first
 - `ENGINEERING.md` holds this package's invariants and design rules; read it before changing behavior.
@@ -31,4 +31,5 @@ See [docs/REVIEW_READINESS.md](docs/REVIEW_READINESS.md) for milestone review ca
 
 - Keep validateClaims a wording check against caller-supplied provenance tiers, not a fact checker or source verifier. An empty violation list does not prove truth, freshness or the sourceRef's authority.
 - Preserve pure, single-read validation and the raw-versus-display boundary: display messages escape control/bidi characters, while structured fields and caller-defined badge/methodology strings still require safe rendering by the consumer.
+- Keep `scanCopy` a ledger-driven wording gate: it finds only the wording a ledger lists and reuses the folding and negation logic of `validate.ts`; do not add a second negation engine, and do not widen its defaults (short negation reach only, narrow quoted exemption).
 - Preserve clause-bounded negation and frozen starter vocabularies; extend phrase lists by copying rather than mutating defaults. Do not market the character-window heuristic as a grammar parser or exhaustive certainty-language coverage.
