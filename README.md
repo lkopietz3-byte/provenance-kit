@@ -182,7 +182,8 @@ supports the claim.
    safe direction. The recipe cannot parse Markdown mixed with HTML exactly. Known
    limit: a literal backtick inside an HTML attribute value is read as an inline-code
    delimiter and can mask the prose up to the next backtick on the line; avoid literal
-   backticks in attribute values, or extract text with your framework's renderer. It can also blank
+   backticks in attribute values, or extract text with your framework's renderer. Emphasis markers
+   (`*`, `_`, `**`) are blanked to spaces, so a marker inside a word (`guar*anteed*`) splits it and a rule on the whole word misses it. It can also blank
    known proper nouns you do not want scanned, such as an organization name that
    contains a listed word. Read its output on a few pages before you trust it.
 
@@ -195,10 +196,11 @@ const NAMED = {
 };
 const ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));/g;
 const MAX_TAG = 4096; // a "<" with no closing ">" within this many characters is text
-// One attribute: whitespace, its name, then an optional value. Reading attributes
-// one after another keeps text inside a value (title='href="/trust"') from
-// counting, and `data-href` has a different name from `href`.
-const ATTRIBUTE = /\s([^\s"'=<>\/{}]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\{[^{}]*\})|([^\s"'<>{}]+)))?/gd;
+// Attributes are read one after another with ATTRIBUTE, which matches a name and
+// the "=" after it; the value is then read by hand. That keeps text inside a value
+// (title='href="/trust"', or a nested {handler}) from counting, and `data-href`
+// has a different name from `href`.
+const ATTRIBUTE = /[\s\/]*([^\s"'=<>\/{}]+)(?:\s*(=)\s*)?/y;
 const BRACED_STRING = /^\{\s*(?:"([^"]*)"|'([^']*)')\s*\}$/d;
 
 /**
@@ -246,15 +248,75 @@ function mapTags(text, replace) {
   return out + text.slice(copied);
 }
 
-/** [offset, text] of each real `href` value in one tag. */
+/** Index of the "}" that closes the "{" at `start`, or -1. Braces nest; quoted text and template literals are skipped. */
+function braceEnd(text, start) {
+  let quote = '';
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === '"' || c === "'" || c === '`') {
+      quote = c;
+    } else if (c === '{') {
+      depth++;
+    } else if (c === '}' && --depth === 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * [offset, text] of each real `href` value in one tag. A value is skipped whole
+ * (nested braces and quotes included); one that cannot be read to its end stops
+ * the scan, so nothing after it counts as a link.
+ */
 function hrefValues(tag) {
   const found = [];
-  for (const m of tag.matchAll(ATTRIBUTE)) {
-    if (m[1].toLowerCase() !== 'href') continue;
-    for (const group of [2, 3, 5]) if (m[group] !== undefined) found.push([m.indices[group][0], m[group]]);
-    const braced = m[4] === undefined ? null : BRACED_STRING.exec(m[4]);
-    for (const group of [1, 2]) {
-      if (braced?.[group] !== undefined) found.push([m.indices[4][0] + braced.indices[group][0], braced[group]]);
+  let at = tag.search(/[\s\/>]/); // past the tag name
+  while (at !== -1 && at < tag.length) {
+    while (at < tag.length && /[\s\/]/.test(tag[at])) at++;
+    if (tag[at] === '{') { // a spread such as {...props}: skip it whole
+      const end = braceEnd(tag, at);
+      if (end === -1) break;
+      at = end + 1;
+      continue;
+    }
+    ATTRIBUTE.lastIndex = at;
+    const m = ATTRIBUTE.exec(tag);
+    if (m === null) {
+      if (at >= tag.length || tag[at] === '>') break;
+      at++; // a stray character: step over it
+      continue;
+    }
+    at = ATTRIBUTE.lastIndex;
+    if (m[2] === undefined) continue; // an attribute with no value
+    const start = at;
+    const open = tag[start];
+    let end;
+    if (open === '"' || open === "'") {
+      end = tag.indexOf(open, start + 1);
+      if (end === -1) break;
+      if (m[1].toLowerCase() === 'href') found.push([start + 1, tag.slice(start + 1, end)]);
+      at = end + 1;
+    } else if (open === '{') {
+      end = braceEnd(tag, start);
+      if (end === -1) break;
+      const braced = BRACED_STRING.exec(tag.slice(start, end + 1));
+      if (m[1].toLowerCase() === 'href') {
+        for (const group of [1, 2]) {
+          if (braced?.[group] !== undefined) found.push([start + braced.indices[group][0], braced[group]]);
+        }
+      }
+      at = end + 1;
+    } else {
+      const bare = /[^\s"'<>{}]+/y;
+      bare.lastIndex = start;
+      const v = bare.exec(tag);
+      if (v === null) continue;
+      if (m[1].toLowerCase() === 'href') found.push([start, v[0]]);
+      at = bare.lastIndex;
     }
   }
   return found;
@@ -329,7 +391,10 @@ function markdownToText(raw, { keepLinkTargets = false, allow = [] } = {}) {
   // Links: blank the brackets and parentheses where they stand; keep the label,
   // and the target too when asked, so a link can serve as a check reference.
   t = t.replace(/\[([^\]\n]{0,300})\]\(([^)\n]{0,600})\)/g, (m, label, url) => ` ${label}  ${keepLinkTargets ? url : blank(url)} `);
-  t = t.replace(/\*\*|__/g, '  '); // emphasis markers
+  t = t.replace(/\*\*|__/g, '  '); // strong markers
+  // Single emphasis: every "*", and a "_" only where it opens or closes a word
+  // (snake_case and /_next/ paths keep theirs), so *returns* and _returns_ are scanned.
+  t = t.replace(/\*|(?<![^\s(\[{"'\u201c\u2018])_(?=[^\s_])|(?<=[^\s_])_(?![^\s).,;:!?\]}"'\u201d\u2019<\u2014\u2013-])/g, ' ');
   t = t.replace(/\|/g, ' '); // table pipes
   for (const word of allow) t = t.split(word).join(' '.repeat(word.length)); // known-good phrases
 

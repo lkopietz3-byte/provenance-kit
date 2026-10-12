@@ -93,6 +93,15 @@ describe('README: compliance claims need an evidence link', () => {
     expect(hits('Write `<b` and later <i>guaranteed returns</i> > x.')).toBe(1);
     expect(hits('if a < b then guaranteed returns > 0')).toBe(1);
   });
+  it('skips a nested braced attribute value completely, so text inside it is never read as a link', () => {
+    const claim = 'We are SOC 2 certified';
+    expect(run(`<span onClick={() => { console.log('see href="/trust"') }}>${claim}</span>`)).toHaveLength(1);
+    expect(run(`<span onClick={() => { go("href='/trust'") }} title="x">${claim}</span>`)).toHaveLength(1);
+    expect(run(`<span {...{ a: 'href="/trust"' }}>${claim}</span>`)).toHaveLength(1);
+    // A real href after such a value is still read.
+    expect(run(`${claim} (<a onClick={() => { go(1) }} href="/trust">details</a>).`)).toEqual([]);
+    expect(run(`${claim} (<a onClick={() => { go('}') }} href='/trust'>details</a>).`)).toEqual([]);
+  });
   it('does not treat an href shown in inline code as a link', () => {
     expect(run('Write `<a href="/trust">` to link. We are SOC 2 certified.')).toHaveLength(1);
   });
@@ -191,6 +200,23 @@ describe('README: markdownToText', () => {
   it('keeps CRLF and lone CR line breaks', () => {
     expect(hits('x\r\n[a] guarantee').map((h) => h[3])).toEqual([{ line: 2, column: 5 }]);
     expect(hits('x\r[a] guarantee').map((h) => h[3])).toEqual([{ line: 2, column: 5 }]);
+  });
+  it('reads through single emphasis, so italic or underscore wording is still scanned', () => {
+    const rule: CopyRule[] = [{ id: 'gr', kind: 'banned', pattern: 'guaranteed returns', reason: 'x' }];
+    for (const raw of [
+      'We offer guaranteed *returns*.',
+      'We offer guaranteed _returns_.',
+      'We offer *guaranteed* returns.',
+      'We offer _guaranteed_ returns.',
+      'We offer *guaranteed returns*.',
+      '(_guaranteed returns_)',
+    ]) {
+      expect(hits(raw, rule).length, raw).toBe(1);
+    }
+    // Columns stay where they were, and word-internal underscores and link targets are untouched.
+    expect(markdownToText('We offer guaranteed *returns*.').text.length).toBe('We offer guaranteed *returns*.'.length);
+    expect(markdownToText('snake_case_name and /_next/x_y/z', { keepLinkTargets: true }).text).toBe('snake_case_name and /_next/x_y/z');
+    expect(markdownToText('[docs](/_trust/a_b)', { keepLinkTargets: true }).text).toBe(' docs  /_trust/a_b ');
   });
   it('can keep link targets and blank known proper nouns', () => {
     expect(markdownToText('[docs](/trust)', { keepLinkTargets: true }).text).toBe(' docs  /trust ');
