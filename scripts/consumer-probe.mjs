@@ -5,10 +5,17 @@
 
 import assert from 'node:assert/strict';
 import {
+  CopyGateError,
   DEFAULT_CERTAINTY_PHRASES,
+  DEFAULT_STRENGTH_RULES,
+  OPTIONAL_STRENGTH_RULES,
   PROVENANCE_TIERS,
+  assertCopyClean,
+  copyBaselineKey,
   methodologyPageOutline,
+  plantedViolationsFail,
   provenanceBadgeText,
+  scanCopy,
   validateClaims,
 } from 'provenance-kit';
 
@@ -128,5 +135,43 @@ assert.ok(outline.includes('# How we know what we publish'));
 assert.ok(outline.includes('### Verified'));
 assert.ok(outline.includes('Consumer Probe Co'));
 assert.ok(outline.includes('TODO: no ProvenanceTierDefinition was supplied for "modeled"'));
+
+// --- copy gate ---------------------------------------------------------------
+const ledger = [
+  { id: 'no-guarantee', kind: 'banned', pattern: 'guaranteed returns', reason: 'No return is guaranteed.', replacement: 'estimated returns' },
+  ...DEFAULT_STRENGTH_RULES,
+];
+const gate = scanCopy(
+  [{ id: 'home', text: 'Line one.\nEnjoy gu\u0430ranteed returns. Estimates are not guarantees.' }],
+  ledger,
+  { required: [{ id: 'disclaimer', phrase: 'estimates are not guarantees' }] },
+);
+assert.deepEqual(gate.offenses.map((o) => [o.ruleId, o.line, o.column, o.replacement]), [['no-guarantee', 2, 7, 'estimated returns']]);
+assert.deepEqual(gate.missing, []);
+assert.deepEqual(
+  scanCopy([{ id: 'home', text: 'We do not offer guaranteed returns.' }], ledger).offenses,
+  [],
+  'a negated banned phrase is exempt',
+);
+assert.deepEqual(
+  scanCopy([{ id: 'a', text: 'Fine.' }], [], { required: [{ id: 'd', phrase: 'estimates' }] }).missing,
+  [{ id: 'd', phrase: 'estimates', sourceIds: ['a'] }],
+);
+assert.equal(scanCopy([{ id: 'a', text: 'Both are SOC 2 certified /trust' }], DEFAULT_STRENGTH_RULES, { checkReference: '/trust' }).offenses.length, 0);
+assert.equal(scanCopy([{ id: 'a', text: 'Both are SOC 2 certified' }], DEFAULT_STRENGTH_RULES, { checkReference: '/trust' }).offenses.length, 1);
+assert.equal(scanCopy([{ id: 'a', text: 'Each figure carries its provenance. You see exactly what changed.' }], DEFAULT_STRENGTH_RULES).offenses.length, 0);
+assert.equal(scanCopy([{ id: 'a', text: 'Prices are verified.' }], OPTIONAL_STRENGTH_RULES).offenses.length, 1);
+const pending = scanCopy([{ id: 'a', text: 'Intro.\nWe guarantee it.' }], [{ id: 'g', kind: 'banned', pattern: 'guarantee', reason: 'r' }]);
+const accepted = pending.offenses.map(copyBaselineKey);
+assert.deepEqual(accepted, ['["a","g","We guarantee it."]']);
+assert.deepEqual(
+  scanCopy([{ id: 'a', text: 'New.\nIntro.\nWe guarantee it.' }], [{ id: 'g', kind: 'banned', pattern: 'guarantee', reason: 'r' }], { baseline: accepted }).offenses,
+  [],
+);
+assert.throws(() => assertCopyClean([{ id: 'a', text: 'guaranteed returns' }], ledger), CopyGateError);
+assert.equal(plantedViolationsFail(ledger).ok, true);
+assert.throws(() => scanCopy([], [{ id: 'x', kind: 'banned', pattern: '', reason: 'r' }]), RangeError);
+assert.equal(Object.isFrozen(DEFAULT_STRENGTH_RULES), true);
+assert.equal(Object.isFrozen(OPTIONAL_STRENGTH_RULES), true);
 
 console.log('consumer-probe.mjs: all assertions passed');

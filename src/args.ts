@@ -7,7 +7,7 @@
 // failure this library exists to prevent.
 
 import type { ProvenanceTierDefinitions } from './types.js';
-import { describeType, escapeForDisplay, isArray, isPlainObject, isVisiblyBlank } from './text.js';
+import { describeType, displayValue, escapeForDisplay, isArray, isPlainObject, isVisiblyBlank } from './text.js';
 
 /** The definition fields the calling helper reads, after they have been checked. */
 export type ReadDefinition = { label: string; shortDescription?: string; criteria?: string };
@@ -54,12 +54,40 @@ export function readOptionsObject(value: unknown, fn: string): Record<string, un
   return value;
 }
 
+/**
+ * Reject an own, enumerable string key that is not a known option, so a typo
+ * ("certaintyPhrase", "negationwindow") throws instead of being silently
+ * ignored. `Object.keys` reads key names only, never a value or a getter, so
+ * this does not break the read-once rule. Symbol keys, non-enumerable keys and
+ * inherited keys are not options and are ignored.
+ */
+export function rejectUnknownOptions(options: Record<string, unknown>, known: readonly string[], fn: string): void {
+  for (const key of Object.keys(options)) {
+    if (!known.includes(key)) {
+      throw new TypeError(`${fn}: unknown option ${displayValue(key)} (known options: ${known.join(', ')}).`);
+    }
+  }
+}
+
 /** An optional string option: `undefined` means "use the default"; anything else must be a string. */
 export function optionalString(value: unknown, name: string, fn: string): string | undefined {
   if (value !== undefined && typeof value !== 'string') {
     throw new TypeError(`${fn}: options.${name} must be a string (received ${describeType(value)}).`);
   }
   return value;
+}
+
+/**
+ * Like `optionalString`, but a visibly blank string (only whitespace, zero-width
+ * or bidi control characters) throws `RangeError`: it would render an empty
+ * heading, an empty emphasis or a sentence with a hole in it.
+ */
+export function optionalNonBlankString(value: unknown, name: string, fn: string): string | undefined {
+  const text = optionalString(value, name, fn);
+  if (text !== undefined && isVisiblyBlank(text)) {
+    throw new RangeError(`${fn}: options.${name} is blank.`);
+  }
+  return text;
 }
 
 /**

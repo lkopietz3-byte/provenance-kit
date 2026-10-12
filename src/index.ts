@@ -26,3 +26,25 @@ export { provenanceBadgeText } from './badge.js';
 
 export type { MethodologyPageOutlineOptions } from './methodology.js';
 export { methodologyPageOutline } from './methodology.js';
+
+export type {
+  CopyRule,
+  CopyRuleKind,
+  CopySource,
+  RequiredStatement,
+  ScanCopyOptions,
+  CopyOffense,
+  MissingStatement,
+  CopyScanResult,
+  PlantedViolationResult,
+  PlantedViolationReport,
+} from './copy-gate.js';
+export {
+  CopyGateError,
+  DEFAULT_STRENGTH_RULES,
+  OPTIONAL_STRENGTH_RULES,
+  assertCopyClean,
+  copyBaselineKey,
+  plantedViolationsFail,
+  scanCopy,
+} from './copy-gate.js';

@@ -6,7 +6,7 @@
 // result into whatever markup they render.
 
 import type { ProvenanceTier, ProvenanceTierDefinitions } from './types.js';
-import { assertDefinitions, readDefinition, readOptionsObject } from './args.js';
+import { assertDefinitions, readDefinition, readOptionsObject, rejectUnknownOptions } from './args.js';
 import { describeType, escapeForDisplay } from './text.js';
 
 const FN = 'provenanceBadgeText';
@@ -32,7 +32,7 @@ export interface ProvenanceBadgeTextOptions {
  * - `tier` must be a string (`TypeError` otherwise: an array or `String`
  *   object would be coerced into a lookup key).
  * - `definitions` must be a plain object, and `options` a plain object or
- *   `undefined` (`TypeError`).
+ *   `undefined` (`TypeError`). An unknown option key throws `TypeError`.
  * - A tier with no OWN entry in `definitions` — including an inherited key such
  *   as "constructor" or "toString", or an entry that is `undefined` or `null`
  *   — throws `Error` ("no tier definition supplied").
@@ -63,6 +63,7 @@ export function provenanceBadgeText(
   }
   assertDefinitions(definitions, FN);
   const rawOptions = readOptionsObject(options, FN);
+  rejectUnknownOptions(rawOptions, ['includeShortDescription'], FN);
   const includeShortDescription = rawOptions.includeShortDescription;
   if (includeShortDescription !== undefined && typeof includeShortDescription !== 'boolean') {
     throw new TypeError(

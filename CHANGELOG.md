@@ -3,6 +3,175 @@
 All notable changes to this project are documented in this file. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.3.0] - unreleased
+
+Adds the copy gate and ships fixes from a verdict hunt on real marketing,
+help-center, legal and pricing copy. The `validateClaims` exports and the shape
+of `ClaimOffense` are unchanged. Some inputs that used to be accepted now throw,
+and some verdicts change in both directions; see Breaking changes and Changed.
+
+### Breaking changes
+
+- **Unknown option keys throw `TypeError`** in `validateClaims`,
+  `provenanceBadgeText` and `methodologyPageOutline`. Migration: pass only the
+  documented options (`certaintyPhrases`, `certaintyRequiresTier`,
+  `requireSourceRefForTiers`, `caseSensitive`, `negationWindow` for
+  `validateClaims`; `includeShortDescription`; `title`, `intro`, `tiers`,
+  `productName`), or pick them out of a larger config object before the call.
+- **A blank `title`, `intro` or `productName` throws `RangeError`** in
+  `methodologyPageOutline` (only spaces, zero-width or bidi control
+  characters). Migration: omit the option to get the default, or give it text.
+- **Some verdicts change.** Copy with the negation cues in Fixed (`no one`,
+  `zero`, `lack`, `unable`, `instead of`, `non-` prefixes, negated lists,
+  numbers and abbreviations inside a clause) is reported less often. Copy with
+  the asserting idioms (`nothing beats`, `without doubt`), look-alike Cyrillic
+  or Greek letters, `no-` or `zero-` compounds, or a `certaintyPhrases` entry
+  with trailing whitespace is reported more often. Migration: rerun your claim
+  suite and review the difference. To report every occurrence regardless of
+  negation, pass `negationWindow: 0`.
+
+### Added
+
+- **Copy gate.** `scanCopy(sources, rules, options?)` scans text you already
+  read (pages, strings, files) against a ledger of `banned`, `retracted` and
+  `strength` rules and checks that required statements are present. Offenses
+  carry the source id, rule id, kind, 1-based line and column (in code points)
+  in the original text, the matched text, the reason and the replacement.
+  `missing` lists, per required statement, the sources that lack it. Text is
+  folded like `validateClaims` text (NFKC, invisible characters, look-alike
+  letters, case, hyphens, line breaks). A match that is negated in its own
+  clause or is the whole content of a quoted mention is exempt unless the rule
+  turns that off. Strength words need a check reference nearby or they are
+  offenses. The default is strict: only the short negation reach is used (the
+  two longer reaches are opt-in with `extendedNegation`), and `negationWindow:
+  0` turns the negation exemption off.
+- Positions stay accurate where NFKC composes across characters (a half-width kana and its voiced mark): the composed span maps to its own start and end. Case folding in the gate does not depend on neighbors: a Greek final sigma reads as sigma in patterns and text. `validateClaims` keeps the native lower-casing, so it still treats final sigma by context.
+- Conjoining Hangul jamo start their own cluster and merge with the one before only where NFKC composes them, so NFD syllables after a line break or after each other keep their own line, column and span. `assertCopyClean` formats only the entries it lists.
+- `DEFAULT_STRENGTH_RULES` (frozen starter list: accurate, audited, certified, proven, each a whole word), `OPTIONAL_STRENGTH_RULES` (verified, accuracy), `assertCopyClean(...)` (throws `CopyGateError` listing every offense, for tests and CI) and `plantedViolationsFail(rules)` (plants each rule's own sample and reports the rules that miss it). The starter list was re-derived from a field trial on 863 public marketing, pricing and docs pages: the eleven words first drafted (verified, proof, proven, atomic, accuracy, accurate, audited, certified, validated, deterministic, exact) gave 472 distinct hits of which roughly one in three were real claims; `exact` was 0 of 139, `deterministic` 0 of 6, `validated` 0 of 6, `atomic` 0 of 1 and `proof` 6 of 21, so they are gone, and `verified` (3 of 21) and `accuracy` moved to the opt-in list. The four kept words gave 73 distinct hits, 56 real (single reviewer).
+- The `proven` starter rule now exempts only verb uses after a form of "have" ("has proven useful", "have proven to be", "has proven that"); "have proven results" and "has proven security" are reported. `copyBaselineKey` returns a JSON array of source id, rule id and line text, so ids that contain a separator cannot collide; the format is stable. The README text extractor now blanks Markdown link delimiters in place (labels keep their column), decodes numeric and named entities with a `locate(line, column)` map back to the file, and keeps HTML or JSX `href` values when `keepLinkTargets` is on (a real `href` attribute only, not `data-href` or text inside another attribute's value; quoted, bare and `href={"..."}` forms, while a template-literal `href={`...`}` counts as no link, the safe direction). An apostrophe inside a template-literal attribute value cannot leak a tag into the prose. Known limit, pinned by a test: a literal backtick inside an attribute value pairs with the next backtick on the line and masks the text between. Inline code and code fences are masked before tags are read, so a stray `<span` in code cannot pair with a later `>` and hide the prose between them. The recipe walks tags, code fences and comments with small scanners (a tag that does not close within 4,096 characters is text) and bounds its link patterns, so its cost is linear on hostile documents; a scaling test runs it on 20k and 80k characters of unterminated openings. The recipe also blanks single emphasis markers (`*returns*`, `_returns_`) so italic wording is scanned, and reads an attribute value with nested braces (an `onClick={() => { ... }}` handler) as one value, so a string inside it can no longer pass as an `href`. A marker inside a word (`guar*anteed*`) still splits it, which the README lists as a limit.
+- `wholeWord: true` on a rule requires a word boundary after a string pattern (`proven` skips `provenance`, `#1` skips `#123`). Off by default.
+- Adoption helpers: `options.baseline` with `copyBaselineKey(offense)` hides accepted offenses by source, rule and line text and reports `suppressed` and `staleBaseline`; each offense carries `context` (its line of text); an unknown rule key now says which keys exist.
+- README: the copy gate guide comes first; the opening states the positioning (a ledger-driven regression gate for wording you already know you do not want); added a worked compliance-claims-need-an-evidence-link ledger, a length-preserving Markdown/MDX/HTML text extractor, a baseline recipe, and the measured precision of the starter words. Both worked examples run in `test/readme-examples.test.ts`.
+- New exports: `scanCopy`, `assertCopyClean`, `plantedViolationsFail`,
+  `CopyGateError`, `DEFAULT_STRENGTH_RULES`, `OPTIONAL_STRENGTH_RULES`,
+  `copyBaselineKey`, and the types `CopyRule`,
+  `CopyRuleKind`, `CopySource`, `RequiredStatement`, `ScanCopyOptions`,
+  `CopyOffense`, `MissingStatement`, `CopyScanResult`,
+  `PlantedViolationResult` and `PlantedViolationReport`.
+- `validateClaims` is unchanged. Internally, `src/validate.ts` now exports its
+  folding and negation helpers to the gate (not part of the public API), and
+  `isNegated` takes an optional `extendedReach` argument that defaults to the
+  old behavior.
+
+### Fixed
+
+- **"No one" and "nobody" negate again.** `"No one can guarantee future
+  results."` and `"Nobody has independently verified these figures."` are no
+  longer reported. They negate only across auxiliary words, so `"No one
+  disputes this independently verified figure."` is still reported.
+- **More negation cues, each with a narrow reach.** `zero`, `lack`, `lacks` and
+  `lacking` negate a phrase that follows directly; `unable` reaches only across
+  `to`, `be` and a few adverbs; `instead of` and `rather than` only across `a`,
+  `an`, `any`, `be` or `being`. `mustn't`, `needn't`, `shan't`, `mightn't` and
+  `oughtn't` join the listed contractions, and a `non-`, `un-`, `no-` or
+  `zero-` prefix attached to the phrase (`"non-guaranteed"`) negates.
+  `"Zero downtime guaranteed."`, `"Big banks are unable to match our
+  guaranteed savings rate."`, `"Non-stop guaranteed support"` and `"If it
+  ain't guaranteed we don't sell it."` are still reported (`ain't` is not a
+  cue).
+- **Imperatives, quotes and parentheses.** An imperative list head is still
+  recognized after an opening quote or bracket or after `please`, `just`,
+  `so`, `now` or `hey`; any opening quote or bracket after an abbreviation's
+  period and a space starts a new sentence; and cues other than strong
+  negations never reach across punctuation, so `"Please don't miss our deals on
+  flights, hotels, or guaranteed rentals."`, `"Not available in the U.S.
+  \u201cguaranteed returns\u201d is our slogan."` and `"Our error rate is zero
+  (guaranteed)."` are reported.
+- **Scope words inside idioms and relative clauses.** The `but` in `nothing
+  but` still ends an earlier negation's scope, and a relative `that` clause
+  after an unrelated negation does not inherit it: `"No fees with nothing but
+  guaranteed returns."` and `"No signup needed for plans that include support,
+  updates, or guaranteed returns."` are reported. `"We do not warrant that the
+  service will be uninterrupted, error-free, or guaranteed."` stays negated.
+- **Hyphenated multiword cues and idioms.** `"far-from-guaranteed"` negates,
+  and `"Not-just guaranteed returns."` and `"Without-question guaranteed
+  returns."` are reported, as their spaced forms are.
+- **Idioms that assert what follows are reported.** `"Nothing beats ..."`,
+  `"Nothing compares ..."`, `"No other tool gives ..."`, `"Without (a) doubt
+  ..."`, `"There is no denying ..."`, `"Not to mention ..."`, `"Why not ..."`,
+  `"Not once has ..."` and hyphenated `"no-"` / `"zero-"` compounds (`"No-risk
+  guaranteed trial"`) no longer hide a phrase. `"No other guarantee applies"`
+  and `"no-guarantee estimates"` stay negated.
+- **Clause boundaries skip numbers and abbreviations.** A period or comma inside
+  a number (`99.9%`, `1,000`) or a known abbreviation (`U.S.`, `Dr.`, `etc.`
+  mid-sentence) no longer ends a negation. `e.g.` and `i.e.` still do; so does
+  an abbreviation followed, past any closing quote or bracket, by a capital
+  letter, a digit or an opening quote or bracket (`"We are not in the U.S. Our data is independently verified."` is
+  reported). A negation never reaches past a separated number right before the
+  phrase (`"No fees on your first $5,000 guaranteed."` is reported).
+- **Negated lists.** `"We make no representations, warranties or guarantees of
+  any kind."` and `"We do not use guaranteed, verified, or proprietary
+  datasets."` no longer report the later items when the negation is not an
+  imperative. Only a tail of at most one word, `or` / `nor` and optionally `a`,
+  `an` or `any` counts, and an imperative (`Never`, `Don't`, `Do not`) never
+  heads a list, nor does a negation separated from the list by a subordinating
+  word: `"No fees, no contracts and guaranteed returns."`, `"Don't wait, apply
+  today or the guaranteed rate expires."` and `"No setup required because each
+  plan includes support, updates, or guaranteed returns."` are still reported.
+- **Long disclaimers in one clause.** A phrase right after `as`, `any`, `or`,
+  `nor`, `be` or `been` is reached by a strong negation anywhere earlier in its
+  clause, up to 500 characters back, unless a subordinating word (`because`,
+  `since`, `when`, `thanks to`, `with`, `that`, ...) sits between (`"These
+  projections have not been reviewed by any outside firm or independently
+  verified."`). Other positions keep the 40-character default, so `"No credit
+  card required to start your free trial of our independently verified rate
+  tracker."` is still reported.
+- **Look-alike letters.** 33 Cyrillic and 22 Greek letters that look like Latin
+  letters are read as Latin inside words that also contain ASCII Latin letters,
+  so `"gu\u0430ranteed"` (Cyrillic a) is reported.
+- **Phrases are trimmed.** A `certaintyPhrases` entry with a trailing space, CR
+  or LF now matches at the end of a text, and an entry of only whitespace
+  matches nothing instead of flagging every claim with a space in it.
+
+### Changed
+
+- **Unknown option keys throw `TypeError`.** `validateClaims`,
+  `provenanceBadgeText` and `methodologyPageOutline` reject an own, enumerable
+  option key they do not know (`certaintyPhrase`, `negationwindow`), instead of
+  ignoring it. Callers who pass a larger config object straight through as
+  options will see a throw.
+- **Blank methodology strings throw `RangeError`.** A visibly blank `title`,
+  `intro` or `productName` in `methodologyPageOutline` used to render an empty
+  heading or a sentence with a hole in it.
+- **Verdicts change in both directions.** Copy with the negations above is
+  reported less often; copy with the asserting idioms, look-alike letters or
+  `no-` / `zero-` compounds is reported more often. Rerun your claim suite and
+  review the difference before upgrading.
+
+### Documented
+
+- A "Strict mode for CI" note in the README: the measured trade-off (precision
+  0.815 and recall 0.757 on a 137-sentence stress set, versus 0.620 and 0.629
+  for 0.2.1) and `negationWindow: 0`, which turns every negation rule off. A
+  test checks that strict mode reports every phrase occurrence in every
+  verdict-table case.
+- The README's Honest limits list the new word lists, the two longer reaches
+  and their 500-character cap, the overclaims still missed (including `"No more
+  guesswork with guaranteed fares."` and `"Rivals lack independently verified
+  data."`), the noise still reported (a comma list without `or`, `"in any way
+  guaranteed"` far from its negation), that negation words are English only,
+  that markup is not stripped, and the exact look-alike letter list.
+- Plain `"verified"`, `"audited"`, `"proven"` and `"100 percent accurate"` stay
+  out of `DEFAULT_CERTAINTY_PHRASES`, with the reason for each.
+- `test/verdict-table.test.ts` pins one case per hunt finding plus guard cases on
+  both sides, every overclaim from a second review that 0.2.1 reported (all
+  still reported), the misses and noise that are wrong in both builds, and two
+  CPU-time bounds for long single-clause input.
+- Negation lookups use one index per claim, so a long clause with many matches
+  costs about what 0.2.1 did.
+
 ## [0.2.1] - 2026-10-07
 
 No change to the library's behavior or API.
@@ -182,8 +351,8 @@ First release.
   Certainty-phrase matching folds Unicode compatibility forms, spacing,
   and hyphenation before comparing, checks a word boundary at the start
   of a match, and treats a configurable window of preceding text as a
-  negation check (with a short list of negation-shaped idioms — "no
-  doubt," "not only" — excluded so they don't wrongly suppress a real
+  negation check (with a short list of negation-shaped idioms ("no
+  doubt," "not only") excluded so they don't wrongly suppress a real
   offense).
 - `DEFAULT_CERTAINTY_PHRASES`: an 11-entry generic starter list of
   overclaiming phrases, frozen against in-place mutation.
@@ -196,6 +365,6 @@ First release.
 
 - `provenanceBadgeText` and `methodologyPageOutline` copy caller-supplied
   definition text into their output verbatim, with no HTML/Markdown
-  escaping. Documented in both TSDoc and the README's Honest limits — see
+  escaping. Documented in both TSDoc and the README's Honest limits; see
   those for when this matters and what to do about it.
 
