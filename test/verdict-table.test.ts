@@ -286,7 +286,7 @@ describe('self-hunt: fresh probes from marketing, help-center, legal and pricing
 });
 
 // Second review (2026-10-10): sentences 0.2.1 reported that an earlier version
-// of these fixes hid. Every one must stay reported (P1, P3), plus the Codex
+// of these fixes hid. Every one must stay reported (P1, P3), plus the external review
 // cases and the misses that are wrong in both builds.
 describe('review: overclaims 0.2.1 reported must stay reported', () => {
   table([
@@ -322,9 +322,9 @@ describe('review: overclaims 0.2.1 reported must stay reported', () => {
     ['P1 U.S. then a digit', 'Not available outside the U.S. 100% accurate filings for every state.', 'FLAG'],
     ['P1 i.e. without a comma', 'No hidden fees i.e. guaranteed transparent pricing.', 'FLAG'],
     ['P1 e.g. without a comma', 'Not sold in stores e.g. guaranteed lowest price online.', 'FLAG'],
-    ['Codex: U.S. then an opening quote', 'We are not in the U.S. “Guaranteed returns” is our slogan.', 'FLAG'],
-    ['Codex: U.S. then an opening paren', 'We are not in the U.S. (Guaranteed returns are our slogan.)', 'FLAG'],
-    ['Codex: legal list with a small window', 'We make no representations, warranties or guarantees of any kind.', 'PASS', { negationWindow: 10 }],
+    ['review: U.S. then an opening quote', 'We are not in the U.S. “Guaranteed returns” is our slogan.', 'FLAG'],
+    ['review: U.S. then an opening paren', 'We are not in the U.S. (Guaranteed returns are our slogan.)', 'FLAG'],
+    ['review: legal list with a small window', 'We make no representations, warranties or guarantees of any kind.', 'PASS', { negationWindow: 10 }],
     ['guard: no-guarantee compound with the index', 'These are no-guarantee estimates.', 'PASS'],
     ['documented miss (both builds): contrast with "not"', 'Skip the guesswork, not the guarantee.', 'PASS'],
     ["documented miss (both builds): can't go wrong with", "You can't go wrong with a guaranteed rate.", 'PASS'],
@@ -364,16 +364,16 @@ describe('review: cost stays near linear', () => {
   });
 });
 
-// Final Codex pass on 87dbc19 (three sentences 0.2.1 reported that it hid) and
+// Final review pass on 87dbc19 (three sentences 0.2.1 reported that it hid) and
 // a targeted sweep combining the narrowed rules with subordinate clauses,
 // quotes after abbreviations and hyphenated idioms.
-describe('review: final Codex cases and sweep', () => {
+describe('review: final review cases and sweep', () => {
   table([
-    ['Codex: list head ends at "because"', 'No setup required because each plan includes support, updates, or guaranteed returns.', 'FLAG'],
-    ['Codex: closing quote after U.S.', '“Not available in the U.S.” Guaranteed returns elsewhere.', 'FLAG'],
-    ['Codex: hyphenated "not just"', 'Not-just guaranteed returns.', 'FLAG'],
-    ['Codex: hyphenated "without question"', 'Without-question guaranteed returns.', 'FLAG'],
-    ['Codex: hyphenated "far from" negates', 'These results are far-from-guaranteed.', 'PASS'],
+    ['review: list head ends at "because"', 'No setup required because each plan includes support, updates, or guaranteed returns.', 'FLAG'],
+    ['review: closing quote after U.S.', '“Not available in the U.S.” Guaranteed returns elsewhere.', 'FLAG'],
+    ['review: hyphenated "not just"', 'Not-just guaranteed returns.', 'FLAG'],
+    ['review: hyphenated "without question"', 'Without-question guaranteed returns.', 'FLAG'],
+    ['review: hyphenated "far from" negates', 'These results are far-from-guaranteed.', 'PASS'],
     ['sweep: list head ends at "since"', 'No paperwork needed since every plan includes coverage, support, or a guarantee.', 'FLAG'],
     ['sweep: list head ends at "when"', 'Nothing to configure when each tier ships with backups, monitoring, or guaranteed uptime.', 'FLAG'],
     ['sweep: list head ends at "which"', 'No contracts required, which means every plan comes with support, updates, or guaranteed savings.', 'FLAG'],
@@ -401,20 +401,20 @@ describe('review: final Codex cases and sweep', () => {
   ]);
 });
 
-// Final Codex pass on 1b0c682.
+// Final review pass on 1b0c682.
 describe('review: imperative prefixes, quotes after abbreviations, direct cues and punctuation', () => {
   table([
-    ['Codex: quoted imperative list head', '\u201cDon\'t miss our deals on flights, hotels, or guaranteed rentals.\u201d', 'FLAG'],
-    ['Codex: "Please" before an imperative list head', "Please don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
+    ['review: quoted imperative list head', '\u201cDon\'t miss our deals on flights, hotels, or guaranteed rentals.\u201d', 'FLAG'],
+    ['review: "Please" before an imperative list head', "Please don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
     ['variant: "Just" before an imperative list head', "Just don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
     ['variant: bracketed imperative list head', "(Don't miss our deals on flights, hotels, or guaranteed rentals.)", 'FLAG'],
     ['variant: "Hey" before an imperative list head', "Hey don't miss our deals on flights, hotels, or guaranteed rentals.", 'FLAG'],
     ['variant: "Now," before an imperative list head', 'Now, never pay more for flights, hotels, or guaranteed rental cars.', 'FLAG'],
-    ['Codex: lower-case quote after U.S.', 'Not available in the U.S. \u201cguaranteed returns\u201d is our slogan.', 'FLAG'],
+    ['review: lower-case quote after U.S.', 'Not available in the U.S. \u201cguaranteed returns\u201d is our slogan.', 'FLAG'],
     ['variant: straight quote after U.S.', "Not available in the U.S. 'guaranteed returns' is our slogan.", 'FLAG'],
     ['variant: paren after U.S.', 'Not available in the U.S. (guaranteed returns elsewhere).', 'FLAG'],
     ['variant: bracket after U.S.', 'Not available in the U.S. [guaranteed returns elsewhere].', 'FLAG'],
-    ['Codex: zero before a parenthetical', 'Our error rate is zero (guaranteed).', 'FLAG'],
+    ['review: zero before a parenthetical', 'Our error rate is zero (guaranteed).', 'FLAG'],
     ['variant: zero before a bracket', 'Our error rate is zero [guaranteed].', 'FLAG'],
     ['variant: zero before a quote', 'Our error rate is zero "guaranteed".', 'FLAG'],
     ['variant: lack before a quote', 'Our competitors lack "guaranteed" pricing.', 'FLAG'],
@@ -424,15 +424,15 @@ describe('review: imperative prefixes, quotes after abbreviations, direct cues a
   ]);
 });
 
-// Codex pass on c3b3333: an asserting idiom that contains a scope word, and a
+// Review pass on c3b3333: an asserting idiom that contains a scope word, and a
 // relative "that" clause after an unrelated negation.
 describe('review: scope words inside idioms, relative clauses after a negation', () => {
   table([
-    ['Codex: "nothing but" still ends the scope of an earlier "no"', 'No fees with nothing but guaranteed returns.', 'FLAG'],
+    ['review: "nothing but" still ends the scope of an earlier "no"', 'No fees with nothing but guaranteed returns.', 'FLAG'],
     ['variant: "nothing but" after "never"', 'Never overpay with nothing but guaranteed rates.', 'FLAG'],
     ['variant: "nothing but" after "no setup"', 'No setup with nothing but fact-checked numbers.', 'FLAG'],
     ["variant: \"nothing but\" after \"don't\"", "Don't settle for anything with nothing but a proprietary dataset behind it.", 'FLAG'],
-    ['Codex: relative "that" clause after "no signup"', 'No signup needed for plans that include support, updates, or guaranteed returns.', 'FLAG'],
+    ['review: relative "that" clause after "no signup"', 'No signup needed for plans that include support, updates, or guaranteed returns.', 'FLAG'],
     ['variant: relative "that" clause after "no credit card"', 'No credit card required for accounts that come with alerts, reports, or guaranteed refunds.', 'FLAG'],
     ['variant: relative "that" clause after "nothing to install"', 'Nothing to install on servers that run backups, monitoring, or guaranteed uptime.', 'FLAG'],
     ['variant: relative "that" clause after "no setup fees"', 'No setup fees on plans that offer onboarding, training, or a guarantee.', 'FLAG'],

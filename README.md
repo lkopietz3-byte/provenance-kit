@@ -10,7 +10,7 @@ The package has a second, smaller part: `validateClaims` labels claims `verified
 
 ## Copy gate: keep listed wording out of shipped copy
 
-**Who it is for:** a small team that keeps its copy in files, already has a handful of phrases legal or the founder never wants shipped (or has retracted), and can spend an afternoon on text extraction and a baseline. In a single-reviewer trial on real marketing, pricing and docs copy, ledgers written for the company ran at roughly 65 to 75 percent precision, and every phrase a ledger named was found where it existed. Starter wording lists you did not write run lower; see the table below.
+**Who it is for:** a small team that keeps its copy in files, already has a handful of phrases legal or the founder never wants shipped (or has retracted), and can spend an afternoon on text extraction and a baseline. Starter wording lists you did not write are noisier than a list you write for your own copy; see the table below.
 
 ### Quick start
 
@@ -101,7 +101,9 @@ the pages where claims live.
 
 The counts come from scanning 863 public pages (8 MB of marketing, comparison,
 pricing and docs text from open-source sites, October 2026) and reading each
-distinct hit once, as a single reviewer. "Real claim" means the flagged wording asserts the
+distinct hit once, as a single reviewer. The page text and the review sheet are not in
+this repo, so these counts are an unpublished internal trial that you cannot rerun here.
+"Real claim" means the flagged wording asserts the
 strength claim; a different word sense, a status label, a disclaimer and a
 metric name do not count. Together the four starter words gave 73 distinct hits,
 56 of them real claims. The eleven-word list this replaced gave 472 hits on the
@@ -644,7 +646,8 @@ overclaim; see Honest limits.
 Negation handling is a heuristic. It trades a few missed overclaims for far
 fewer false alarms on honest disclaimers. On a 137-sentence stress set of real
 marketing, help-center and legal copy (70 overclaims, 67 honest sentences) it
-scores precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes 0.3.0).
+scored precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes 0.3.0).
+The stress set is not in this repo, so treat these as unpublished internal figures.
 A team that would rather review every certainty word can turn all of it off:
 
 ```ts
@@ -855,7 +858,7 @@ const { offenses, missing, sourcesScanned, suppressed, staleBaseline } = scanCop
   match it does not govern: `No setup required for our guaranteed uptime SLA` and
   `There is no limit to what you can do on our unlimited plan` pass a rule on
   `guaranteed` or `unlimited`. A verb-attached negation (`We never miss a legally
-  binding signature`) hides the claim it asserts. In a trial on public copy, the
+  binding signature`) hides the claim it asserts. In the same unpublished trial, the
   default window hid no real overclaim in 42 reviewed exemptions, and these shapes
   still pass; review the negated hits of rules that matter by running them once
   with `negationWindow: 0`.

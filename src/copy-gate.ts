@@ -212,9 +212,10 @@ const strengthRule = (word: string, reason: string): CopyRule =>
  * A starter list of strength words: words that read as a claim about how well
  * something was checked. Each needs a nearby check reference (`checkReference`)
  * or the match is an offense of kind `strength`. Four words, kept because they
- * held up on real copy: on 863 public marketing, pricing and docs pages the
- * four ran at about 60 percent precision (the 2026-10 field trial; README has
- * the table), where the eleven-word list this replaced ran at about 25 percent.
+ * held up on real copy: in an unpublished 2026-10 scan of 863 public pages (the
+ * pages are not in this repo; README has the per-word table), 56 of the 73
+ * distinct hits were real claims, where the eleven-word list this replaced had
+ * roughly one in three.
  * Each matches a whole word, so `proven` skips `provenance` and `accurate`
  * skips `accurately`. Frozen; extend by spreading it into a new array. It is not
  * a vocabulary of everything that overclaims: the gate finds wording you list.

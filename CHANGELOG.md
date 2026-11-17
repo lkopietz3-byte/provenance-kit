@@ -153,8 +153,8 @@ and some verdicts change in both directions; see Breaking changes and Changed.
 ### Documented
 
 - A "Strict mode for CI" note in the README: the measured trade-off (precision
-  0.815 and recall 0.757 on a 137-sentence stress set, versus 0.620 and 0.629
-  for 0.2.1) and `negationWindow: 0`, which turns every negation rule off. A
+  0.815 and recall 0.757 on a 137-sentence stress set that is not in this repo,
+  versus 0.620 and 0.629 for 0.2.1) and `negationWindow: 0`, which turns every negation rule off. A
   test checks that strict mode reports every phrase occurrence in every
   verdict-table case.
 - The README's Honest limits list the new word lists, the two longer reaches

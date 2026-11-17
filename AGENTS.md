@@ -4,7 +4,6 @@ A copy regression gate for banned and retracted wording (`scanCopy`), plus a lin
 
 ## Read first
 - `ENGINEERING.md` holds this package's invariants and design rules; read it before changing behavior.
-- `PROJECT_CONTEXT.md` is the current project state and decisions.
 - `SECURITY.md` covers the security posture; follow it for anything touching input handling.
 
 ## Commands (from package.json)
@@ -23,11 +22,7 @@ A copy regression gate for banned and retracted wording (`scanCopy`), plus a lin
 - Runtime `dependencies` stay empty; add dev tooling only.
 - Keep unrelated uncommitted work intact; never stage or reset the whole tree.
 
-## Review preparation
-
-See [docs/REVIEW_READINESS.md](docs/REVIEW_READINESS.md) for milestone review cadence, declared verification gates and the next launch-preparation task.
-
-## Code Review Rules
+## Review notes
 
 - Keep validateClaims a wording check against caller-supplied provenance tiers, not a fact checker or source verifier. An empty violation list does not prove truth, freshness or the sourceRef's authority.
 - Preserve pure, single-read validation and the raw-versus-display boundary: display messages escape control/bidi characters, while structured fields and caller-defined badge/methodology strings still require safe rendering by the consumer.
