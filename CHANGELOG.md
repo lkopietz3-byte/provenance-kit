@@ -5,7 +5,7 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.3.0] - unreleased
+## [0.3.0] - 2026-10-12
 
 Adds the copy gate and ships fixes from a verdict hunt on real marketing,
 help-center, legal and pricing copy. The `validateClaims` exports and the shape
