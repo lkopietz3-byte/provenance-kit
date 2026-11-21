@@ -5,6 +5,15 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-20
+
+Documentation only. Behavior and API are the same as 0.3.0.
+
+### Changed
+
+- The packaged CHANGELOG dates every release. The 0.3.0 package listed its own version as unreleased.
+- The README and one code comment label figures whose data is not in the repository. Behavior is unchanged.
+
 ## [0.3.0] - 2026-10-12
 
 Adds the copy gate and ships fixes from a verdict hunt on real marketing,
