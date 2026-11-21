@@ -1,6 +1,6 @@
 {
   "name": "provenance-kit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A copy regression gate for banned and retracted wording, plus a lint that checks claim wording is not stronger than its verified, modeled or editorial label. Wording checks, not fact-checkers.",
   "keywords": [
     "provenance",

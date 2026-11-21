@@ -646,7 +646,7 @@ overclaim; see Honest limits.
 Negation handling is a heuristic. It trades a few missed overclaims for far
 fewer false alarms on honest disclaimers. On a 137-sentence stress set of real
 marketing, help-center and legal copy (70 overclaims, 67 honest sentences) it
-scored precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes 0.3.0).
+scored precision 0.815 and recall 0.757, versus 0.620 and 0.629 for the published 0.2.1 release (this file describes 0.3.1, which behaves the same as 0.3.0).
 The stress set is not in this repo, so treat these as unpublished internal figures.
 A team that would rather review every certainty word can turn all of it off:
 
